@@ -1,4 +1,4 @@
-É# Python
+Û# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -24,6 +24,7 @@ yarn-error.log*
 *.swp
 *.swo
 *~
+.windsurf-server/
 
 # OS
 .DS_Store
@@ -49,4 +50,4 @@ frontend-naive/.nuxt/
 *.tmp
 *.bak
 *.cache
-É*cascade082file:///root/.gitignore
+Þ *cascade08Þð*cascade08ðÛ *cascade082file:///root/.gitignore
