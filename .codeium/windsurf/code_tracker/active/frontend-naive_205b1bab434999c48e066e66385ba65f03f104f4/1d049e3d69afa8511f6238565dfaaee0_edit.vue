@@ -1,0 +1,199 @@
+ü%<script setup>
+import { ref } from 'vue';
+import { useRoute } from 'vue-router';
+import Axios from '@/plugins/axios';
+import router from '@/router';
+import MdEditor from '@/components/MdEditor.vue';
+
+const route = useRoute(),
+  message = useMessage();
+const id = route.params.id;
+
+const contest = ref({
+    problem_list_mode: true, // é¢˜å•æ¨¡å¼å›ºå®šä¸º true
+    problems: [],
+    users: [],
+    title: '',
+    description: '',
+    is_hidden: false,
+    allow_sign_up: true,
+  }),
+  contest_time_range = ref([
+    Math.floor(Date.now() / 3600000) * 3600000,
+    Math.floor(Date.now() / 3600000) * 3600000 + 86400000,
+  ]);
+
+const problemOptions = ref([]),
+  loadingProblem = ref(false);
+const searchProblem = search => {
+  if (!search) {
+    problemOptions.value = [];
+    return;
+  }
+  loadingProblem.value = true;
+  Axios.get(`/problem/`, {
+    params: {
+      search,
+    },
+  })
+    .then(res => {
+      res = res.results;
+      problemOptions.value = res.map(item => ({
+        label: `#${item.id} | ${item.title}`,
+        value: item.id,
+      }));
+    })
+    .finally(() => {
+      loadingProblem.value = false;
+    });
+};
+
+const userOptions = ref([]),
+  loadingUser = ref(false);
+const searchUser = search => {
+  if (!search) {
+    userOptions.value = [];
+    return;
+  }
+  loadingUser.value = true;
+  Axios.get(`/user/`, {
+    params: {
+      search,
+    },
+  })
+    .then(res => {
+      res = res.results;
+      userOptions.value = res.map(item => ({
+        label: item.username,
+        value: item.id,
+      }));
+    })
+    .finally(() => {
+      loadingUser.value = false;
+    });
+};
+
+if (id) {
+  Axios.get(`/contest/${id}/`).then(res => {
+    problemOptions.value = res.problems.map(item => ({
+      label: `#${item.id} | ${item.title}`,
+      value: item.id,
+    }));
+    res.problems = res.problems.map(item => item.id);
+    userOptions.value = res.users.map(item => ({
+      label: item.username,
+      value: item.id,
+    }));
+    res.start_time = (res.start_time && Number(new Date(res.start_time))) || 0;
+    res.end_time = (res.end_time && Number(new Date(res.end_time))) || 0;
+    contest_time_range.value = [res.start_time, res.end_time];
+    res.users = res.users.map(item => item.id);
+    contest.value = res;
+  });
+}
+
+const submiting = ref(false);
+const submit = () => {
+  const data = contest.value;
+  data.start_time = contest_time_range.value[0];
+  data.end_time = contest_time_range.value[1];
+  if (!data.title) {
+    message.warning('é¢˜å•æ ‡é¢˜ä¸èƒ½ä¸ºç©º');
+    return;
+  }
+  data.start_time =
+    (data.start_time && new Date(data.start_time).toISOString()) || null;
+  data.end_time =
+    (data.end_time && new Date(data.end_time).toISOString()) || null;
+  if (data.problem_list_mode) {
+    data.is_hidden = false;
+  }
+  submiting.value = true;
+  let req;
+  if (id) req = Axios.put(`/contest/${id}/`, data);
+  else req = Axios.post('/contest/', data);
+  req
+    .then(res => {
+      if (!id) router.push({ name: 'problemset_detail', params: { id: res.id } });
+      else message.success('ä¿®æ”¹æˆåŠŸ');
+    })
+    .finally(() => {
+      submiting.value = false;
+    });
+};
+
+const deleteContest = () => {
+  Axios.delete(`/contest/${id}/`).then(() => {
+    message.success('åˆ é™¤æˆåŠŸï¼');
+    router.push({ name: 'problemset_list' });
+  });
+};
+</script>
+
+<template>
+  <h1>
+    <n-space style="align-items: center" size="large">
+      {{ id ? 'ç¼–è¾‘' : 'åˆ›å»º' }}é¢˜å• {{ id ? ` #${id}` : '' }}
+      <n-button
+        v-if="id"
+        @click="router.push({ name: 'problemset_detail', params: { id } })"
+        style="display: flex; align-items: center"
+      >
+        è¿”å›
+      </n-button>
+    </n-space>
+  </h1>
+
+  <n-divider />
+
+  <n-space vertical size="large">
+    <div>
+      <h2>é¢˜å•åç§°</h2>
+      <n-input
+        v-model:value="contest.title"
+        placeholder="è¯·è¾“å…¥åç§°"
+        size="large"
+      />
+    </div>
+    <div>
+      <h2>é¢˜å•æè¿°</h2>
+      <MdEditor v-model:content="contest.description" />
+    </div>
+    <div>
+      <h2>é¢˜ç›®åˆ—è¡¨</h2>
+      <n-select
+        v-model:value="contest.problems"
+        multiple
+        filterable
+        placeholder="æœç´¢é¢˜ç›®"
+        :options="problemOptions"
+        :loading="loadingProblem"
+        clearable
+        remote
+        :clear-filter-after-select="true"
+        @search="searchProblem"
+      />
+    </div>
+  </n-space>
+
+  <n-divider />
+
+  <n-space>
+    <n-button
+      type="primary"
+      size="large"
+      @click="submit"
+      :loading="submiting"
+      :disabled="submiting"
+    >
+      ä¿å­˜
+    </n-button>
+    <n-popconfirm @positive-click="deleteContest" v-if="id">
+      <template #trigger>
+        <n-button type="error" size="large"> åˆ é™¤ </n-button>
+      </template>
+      æ‚¨ç¡®è®¤è¦åˆ é™¤é¢˜å• {{ contest.title }} å—ï¼Ÿè¯¥æ“ä½œä¸å¯æ’¤é”€ã€‚
+    </n-popconfirm>
+  </n-space>
+</template>
+¦ *cascade08¦¬*cascade08¬Š *cascade08ŠŒ*cascade08Œ *cascade08*cascade08 *cascade08‘*cascade08‘’ *cascade08’“*cascade08“º *cascade08º¼*cascade08¼½ *cascade08½¿*cascade08¿À *cascade08ÀÁ*cascade08ÁÂ *cascade08ÂÃ*cascade08ÃĞ *cascade08ĞÖ*cascade08Ö¸ *cascade08¸º*cascade08º» *cascade08»½*cascade08½¾ *cascade08¾¿*cascade08¿À *cascade08ÀÁ*cascade08ÁÄ *cascade08ÄÊ*cascade08Êü% *cascade08"(205b1bab434999c48e066e66385ba65f03f104f429file:///root/frontend-naive/src/pages/problemset/edit.vue:file:///root/frontend-naive

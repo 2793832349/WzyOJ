@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.windsurf-server/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes and data
+deploy/data/
+*.log
+
+# Build outputs
+frontend-naive/dist/
+frontend-naive/.nuxt/
+
+# Environment files
+.env
+.env.local
+
+# Database
+*.sqlite3
+*.db
+
+# Temporary files
+*.tmp
+*.bak
+*.cache

@@ -1,0 +1,28 @@
+êserver {
+    listen ${NGINX_PORT};
+    server_name ${NGINX_HOST};
+    server_tokens off;
+    location / {
+        root /usr/share/nginx/html;
+        try_files $uri $uri/ /index.html;
+        index index.html index.htm;
+        
+        # Cache control for HTML files - no cache
+        location ~* \.html$ {
+            add_header Cache-Control "no-cache, no-store, must-revalidate";
+            add_header Pragma "no-cache";
+            add_header Expires "0";
+        }
+        
+        # Cache control for static assets with hash - long cache
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+            add_header Cache-Control "public, max-age=31536000, immutable";
+        }
+    }
+    location /api {
+        client_max_body_size 1024m;
+        include     uwsgi_params;
+        uwsgi_pass  ${BACKEND_HOST}:${BACKEND_PORT};
+        rewrite     ^/api/(.*)$  /$1  break;
+    }
+}ê *cascade08"(5ac4ce5149d5df03259d8e59c714ddf813d0c19c2@file:///root/deploy/config/nginx-templates/default.conf.template:file:///root/deploy
