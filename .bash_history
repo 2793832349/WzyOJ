@@ -473,3 +473,162 @@ except Exception as e:
     import traceback
     traceback.print_exc()
 \""
+eval 'git remote set-url origin https://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@github.com/2793832349/WzyOJ.git'
+eval 'git remote -v'
+eval 'git remote remove origin'
+eval 'git branch -M main'
+eval 'git remote add origin https://github.com/2793832349/WzyOJ.git'
+eval 'git push -u origin main'
+eval 'git rm -r --cached .windsurf-server/'
+eval 'git add .gitignore'
+eval 'git commit --amend -m "Initial commit: WZY Online Judge System"'
+eval 'git push -u origin main --force'
+cd /root/deploy
+eval 'docker cp /root/backend/oj_contest/models.py oj-backend:/srv/server/oj_contest/models.py && docker cp /root/backend/oj_contest/views.py oj-backend:/srv/server/oj_contest/views.py'
+eval 'docker-compose exec backend python manage.py makemigrations'
+eval 'docker-compose exec backend python /srv/server/manage.py makemigrations'
+eval 'docker-compose exec backend python /srv/server/manage.py migrate'
+eval 'docker-compose restart backend'
+eval 'bash build-local-frontend.sh'
+eval 'docker cp /root/backend/oj_contest/models.py oj-backend:/srv/server/oj_contest/models.py && docker cp /root/backend/oj_contest/views.py oj-backend:/srv/server/oj_contest/views.py'
+eval 'docker-compose exec backend python /srv/server/manage.py makemigrations'
+eval 'docker-compose exec backend python /srv/server/manage.py migrate'
+eval 'docker-compose restart backend'
+eval 'bash build-local-frontend.sh'
+cd /root/deploy
+eval 'bash build-local-frontend.sh'
+eval "docker-compose exec db psql -U oj -d oj -c \"SELECT username, password FROM user_userprofile WHERE username='student01';\""
+eval 'docker-compose ps'
+eval 'docker exec oj-postgres psql -U oj -d oj -c "\dt" | grep user'
+eval "docker exec oj-postgres psql -U onlinejudge -d onlinejudge -c \"SELECT username, password FROM auth_user WHERE username='student01';\""
+eval 'docker exec oj-postgres psql -U onlinejudge -d onlinejudge -c "\dt" | head -30'
+eval "docker exec oj-postgres psql -U onlinejudge -d onlinejudge -c \"SELECT username, password FROM oj_user_user WHERE username='student01';\""
+eval "docker exec oj-backend python manage.py shell -c \"from oj_user.models import User; u = User.objects.get(username='student01'); u.set_password('123456'); u.save(); print('Password reset to: 123456')\""
+eval "docker exec -w /code oj-backend python manage.py shell -c \"from oj_user.models import User; u = User.objects.get(username='student01'); u.set_password('123456'); u.save(); print('Password reset to: 123456')\""
+eval 'docker exec oj-backend pwd'
+eval 'docker exec oj-backend ls -la /srv/ | head -20'
+eval "docker exec oj-backend python /srv/server/manage.py shell -c \"from oj_user.models import User; u = User.objects.get(username='student01'); u.set_password('123456'); u.save(); print('Password reset to: 123456')\""
+cd /root
+eval 'git diff /root/backend/oj_class/views.py'
+eval 'cd /root/backend && git diff oj_class/views.py | head -100'
+cd /root/deploy
+eval "docker exec oj-postgres psql -U onlinejudge -d onlinejudge -c \"SELECT s.id, u.username, p.id as problem_id, p.title, s.status, s.create_time FROM oj_submission_submission s JOIN oj_user_user u ON s.user_id = u.id JOIN oj_problem_problem p ON s.problem_id = p.id WHERE u.username = 'student01' ORDER BY s.create_time DESC LIMIT 10;\""
+eval 'docker exec oj-postgres psql -U onlinejudge -d onlinejudge -c "SELECT a.id, a.title, ap.problem_id, cp.reference_problem_id FROM oj_class_assignment a JOIN oj_class_assignmentproblem ap ON a.id = ap.assignment_id JOIN oj_class_classproblem cp ON ap.problem_id = cp.id WHERE a.id = 1;"'
+eval 'docker-compose restart backend'
+eval 'docker exec oj-backend curl -s http://localhost:8080/api/class/assignment/1/grades/ -H "Authorization: Bearer YOUR_TOKEN" | python3 -m json.tool | head -50'
+eval 'docker logs oj-backend --tail 50 | grep -i "error\|exception" | tail -20'
+eval 'docker logs oj-backend --tail 100 | tail -50'
+eval 'docker exec oj-backend cat /srv/server/oj_class/views.py | grep -A 20 "查找该学生对该题目的最佳提交"'
+eval 'chmod +x build-local-backend.sh'
+eval 'bash build-local-backend.sh'
+eval 'docker exec oj-backend cat /srv/server/oj_class/views.py | grep -A 30 "查找该学生对该题目的最佳提交"'
+eval 'docker-compose build --no-cache backend'
+eval 'docker-compose restart backend'
+eval 'docker exec oj-backend cat /srv/server/oj_class/views.py | grep -A 35 "查找该学生对该题目的最佳提交"'
+eval 'docker run --rm genuine-oj/backend:latest cat /srv/server/oj_class/views.py | grep -A 35 "查找该学生对该题目的最佳提交"'
+cd /root
+eval "grep -n \"order_by('-status'\" /root/backend/oj_class/views.py"
+cd /root/deploy
+eval 'docker exec oj-backend bash -c "cd /srv/server && cp oj_class/views.py oj_class/views.py.bak"'
+eval 'docker cp /root/backend/oj_class/views.py oj-backend:/srv/server/oj_class/views.py'
+eval 'docker exec oj-backend cat /srv/server/oj_class/views.py | grep -A 10 "优先查找 AC"'
+eval 'docker-compose restart backend'
+eval 'sleep 5 && docker logs oj-backend --tail 20'
+eval 'bash build-local-frontend.sh'
+eval 'docker cp /root/backend/oj_class/views.py oj-backend:/srv/server/oj_class/views.py'
+eval 'docker-compose restart backend'
+eval 'bash build-local-frontend.sh'
+cd /root/frontend-naive
+eval 'mkdir -p /root/frontend-naive/src/pages/problemset'
+eval 'cp /root/frontend-naive/src/pages/contest/_id.vue /root/frontend-naive/src/pages/problemset/_id.vue'
+eval 'cp /root/frontend-naive/src/pages/contest/edit.vue /root/frontend-naive/src/pages/problemset/edit.vue'
+cd /root/deploy
+eval 'bash build-local-frontend.sh'
+eval 'docker cp /root/backend/oj_contest/views.py oj-backend:/srv/server/oj_contest/views.py'
+eval 'docker-compose restart backend'
+eval 'bash build-local-frontend.sh'
+eval 'docker system prune -f'
+eval 'bash build-local-frontend.sh'
+cd /root
+eval 'cd /root/frontend-naive && yarn build'
+cd /root
+eval 'which npm'
+eval 'ls -la /root/deploy/data/frontend/ | head -20'
+eval 'df -h'
+eval 'free -h'
+eval 'docker system df'
+eval 'docker image prune -a -f'
+eval 'sudo fallocate -l 4G /swapfile'
+eval 'sudo chmod 600 /swapfile'
+eval 'sudo mkswap /swapfile'
+eval 'sudo swapon /swapfile'
+eval 'free -h'
+eval "echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab"
+cd /root/deploy
+eval 'bash build-local-frontend.sh'
+eval 'docker cp /root/backend/oj_user/serializers.py oj-backend:/srv/server/oj_user/serializers.py'
+eval 'docker-compose restart backend'
+eval 'bash build-local-frontend.sh'
+cd /root
+eval "curl -s http://localhost/api/user/1/ -H \"Cookie: \$(docker exec oj-backend cat /tmp/session.txt 2>/dev/null || echo '')\" | python3 -m json.tool"
+cd /root/deploy
+eval "docker exec oj-backend python manage.py shell -c \"from oj_user.models import User; u = User.objects.get(id=1); print(f'username: {u.username}'); print(f'is_superuser: {u.is_superuser}'); print(f'is_staff: {u.is_staff}'); print(f'permissions: {u.permissions}')\""
+eval "docker exec -w /srv/server oj-backend python manage.py shell -c \"from oj_user.models import User; u = User.objects.get(id=1); print(f'username: {u.username}'); print(f'is_superuser: {u.is_superuser}'); print(f'is_staff: {u.is_staff}'); print(f'permissions: {u.permissions}')\""
+eval 'docker exec oj-backend grep -A 5 "class UserSerializer" /srv/server/oj_user/serializers.py'
+eval 'docker exec oj-backend grep -A 8 "class UserSerializer" /srv/server/oj_user/serializers.py'
+eval 'grep -A 10 "getUserRole" /root/deploy/data/frontend/assets/index.*.js 2>/dev/null | head -20'
+eval 'ls -lh /root/deploy/data/frontend/assets/index.*.js | head -5'
+eval 'ls -lht /root/deploy/data/frontend/assets/ | head -10'
+eval 'bash build-local-frontend.sh'
+eval 'docker cp /root/backend/oj_submission/views.py oj-backend:/srv/server/oj_submission/views.py && docker cp /root/backend/oj_user/views.py oj-backend:/srv/server/oj_user/views.py && docker cp /root/backend/oj_user/serializers.py oj-backend:/srv/server/oj_user/serializers.py'
+eval 'docker-compose restart backend'
+eval 'bash build-local-frontend.sh'
+eval 'docker cp /root/backend/oj_user/views.py oj-backend:/srv/server/oj_user/views.py'
+eval 'docker-compose restart backend'
+eval 'docker cp /root/backend/oj_submission/views.py oj-backend:/srv/server/oj_submission/views.py && docker-compose restart backend'
+eval 'docker cp /root/backend/oj_contest/views.py oj-backend:/srv/server/oj_contest/views.py && docker-compose restart backend'
+eval 'bash build-local-frontend.sh'
+cd /root
+eval 'git config --global user.name "王正一"'
+eval 'git config --global user.email "10152601+wang-zhengyiyi@user.noreply.gitee.com"'
+eval 'git status'
+eval 'git init'
+eval 'git add .'
+eval 'rm -rf backend/.git frontend-naive/.git judger/.git deploy/.git'
+eval 'git add .'
+eval 'git commit -m "Initial commit: WZY Online Judge System"'
+eval 'git remote add origin https://gitee.com/wang-zhengyiyi/wzy-oj.git'
+eval 'git push -u origin master'
+cd /root/deploy
+eval 'docker cp /root/backend/oj_user/views.py oj-backend:/srv/server/oj_user/views.py'
+eval 'docker-compose restart backend'
+eval 'bash build-local-frontend.sh'
+eval 'docker cp /root/backend/oj_class/models.py oj-backend:/srv/server/oj_class/models.py && docker cp /root/backend/oj_class/views.py oj-backend:/srv/server/oj_class/views.py'
+eval 'docker-compose exec backend python /srv/server/manage.py makemigrations'
+eval 'docker-compose exec backend python /srv/server/manage.py migrate'
+eval 'docker-compose restart backend'
+eval 'bash build-local-frontend.sh'
+cd /root
+eval 'git add .'
+eval 'git status'
+eval 'git add -A'
+eval 'git commit -m "feat: 添加ACM赛制、封榜、公开排行榜、班级解散等功能
+
+- 添加比赛赛制选择（IOI/OI/ACM）
+- ACM赛制支持封榜功能，封榜后普通用户看不到实时排名
+- 添加公开排行榜选项，允许未登录用户查看
+- 优化用户管理：使用Dialog替代原生confirm弹窗
+- 添加班级解散功能，解散后所有成员被移除且班级不可见
+- 优化排行榜显示：题单不显示罚时，题目按钮支持换行
+- 修复UserViewSet权限问题，支持PATCH方法更新用户信息"'
+eval 'git push origin main'
+cd /root/frontend-naive
+eval 'grep -n "<!--" /root/frontend-naive/src/pages/problem/edit/detail.vue | head -20'
+eval "sed -n '172,173p' /root/frontend-naive/src/pages/problem/edit/detail.vue"
+eval "sed -n '165,180p' /root/frontend-naive/src/pages/problem/edit/detail.vue"
+eval 'grep -B5 -A5 "附件功能" /root/frontend-naive/src/pages/problem/edit/detail.vue'
+eval 'git log --all --full-history -p -- "src/pages/problem/edit/detail.vue" | grep -A30 -B5 "附件" | head -100'
+eval 'grep -n "upload\|Upload" /root/frontend-naive/src/pages/problem/edit/detail.vue'
+eval 'ps aux | grep -E "npm|node|vite|dev" | grep -v grep'
+cd /root/deploy
+eval 'bash build-local-frontend.sh'
