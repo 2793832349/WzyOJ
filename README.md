@@ -1,4 +1,4 @@
-# Genuine OJ 开发环境
+# WZY OJ 开发环境
 
 ## 🎯 项目状态
 
@@ -302,8 +302,6 @@ docker exec -it oj-postgres psql -U onlinejudge
 
 - 查看详细文档: `DEVELOPMENT_GUIDE.md`
 - 查看项目概览: `PROJECT_OVERVIEW.md`
-- GitHub Issues: https://github.com/genuine-oj
-- API 文档: https://genuine-oj.apifox.cn/
 
 ---
 
