@@ -1,0 +1,14 @@
+services:
+  build-frontend:
+    image: genuine-oj/builder:latest
+    build:
+      context: .
+      dockerfile: ./dockerfile/Dockerfile.build-frontend
+      args:
+        USE_MIRROR: ${USE_MIRROR:-false}
+    volumes:
+      - ./data/frontend/:/root/frontend-dist/
+      - ../frontend-naive:/root/frontend-local
+    environment:
+      USE_MIRROR: ${USE_MIRROR:-false}
+      USE_LOCAL_SOURCE: ${USE_LOCAL_SOURCE:-false}

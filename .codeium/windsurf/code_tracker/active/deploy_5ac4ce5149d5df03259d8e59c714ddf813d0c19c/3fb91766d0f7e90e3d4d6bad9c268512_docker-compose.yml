@@ -1,0 +1,130 @@
+èservices:
+  frontend:
+    image: nginx:stable-alpine
+    container_name: oj-frontend
+    restart: always
+    depends_on:
+      - backend
+    volumes:
+      - ./data/frontend:/usr/share/nginx/html:ro
+      - ./config/nginx-templates:/etc/nginx/templates:ro
+    ports:
+      - "80:80"
+    environment:
+      NGINX_HOST: localhost
+      NGINX_PORT: 80
+      BACKEND_HOST: oj-backend
+      BACKEND_PORT: 8080
+  judge-server:
+    image: genuine-oj/judger:latest
+    container_name: oj-judge-server
+    build:
+      context: .
+      dockerfile: ./dockerfile/Dockerfile.judger
+      args:
+        USE_MIRROR: ${USE_MIRROR:-false}
+    restart: always
+    read_only: true
+    cap_drop:
+      - SETPCAP
+      - MKNOD
+      - NET_BIND_SERVICE
+      - SYS_CHROOT
+      - SETFCAP
+      - FSETID
+    tmpfs:
+      - /tmp
+    volumes:
+      - ./data/backend/judge_data/test_data:/srv/test_data:ro
+      - ./data/backend/judge_data/spj:/srv/spj:ro
+      - ./data/judge_server/run:/judger
+    environment:
+      PARALLEL_TESTS: 2
+      PARALLEL_USERS: 1
+      TEST_CASE_DIR: /srv/test_data
+      SPJ_DIR: /srv/spj
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "timeout 1 bash -c 'cat < /dev/null > /dev/tcp/localhost/8080'"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  redis:
+    image: redis:6-alpine
+    container_name: oj-redis
+    restart: always
+    volumes:
+      - ./data/redis:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  postgres:
+    image: postgres:15-alpine
+    container_name: oj-postgres
+    restart: always
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-onlinejudge}
+      POSTGRES_USER: ${POSTGRES_USER:-onlinejudge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-onlinejudge}
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-U", "postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    container_name: oj-rabbitmq
+    restart: always
+    volumes:
+      - ./data/rabbitmq:/var/lib/rabbitmq/mnesia
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+  backend:
+    image: genuine-oj/backend:latest
+    build:
+      context: ..
+      dockerfile: ./deploy/dockerfile/Dockerfile.backend
+      args:
+        USE_MIRROR: ${USE_MIRROR:-false}
+    container_name: oj-backend
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      judge-server:
+        condition: service_healthy
+    volumes:
+      - ./data/backend/secret.key:/srv/server/secret.key
+      - ./data/backend/judge_data/submission:/data/judge_data/submission
+      - ./data/backend/judge_data/test_data:/data/judge_data/test_data
+      - ./data/backend/judge_data/spj:/data/judge_data/spj
+      - ./data/backend/problem_files:/data/problem_files
+      - ./data/static-files:/srv/server/static
+    environment:
+      OJ_MODE: PRODUCTION
+      OJ_SQL_HOST: oj-postgres
+      OJ_SQL_USER: ${POSTGRES_USER:-onlinejudge}
+      OJ_SQL_PASSWORD: ${POSTGRES_PASSWORD:-onlinejudge}
+      OJ_SQL_NAME: ${POSTGRES_DB:-onlinejudge}
+      OJ_REDIS_HOST: oj-redis
+      OJ_MQ_HOST: oj-rabbitmq
+      OJ_JUDGE_HOST: oj-judge-server
+      OJ_PROBLEM_FILE_ROOT: /data/problem_files/
+      OJ_JUDGE_DATA_ROOT: /data/judge_data/
+      UWSGI_PORT: 8080
+      SUPERUSER_USERNAME: ${SUPERUSER_USERNAME:-admin}
+      SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:-123456}
+      SUPERUSER_EMAIL: ${SUPERUSER_EMAIL:-admin@genuine.og}
+è*cascade08"(5ac4ce5149d5df03259d8e59c714ddf813d0c19c2&file:///root/deploy/docker-compose.yml:file:///root/deploy

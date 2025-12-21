@@ -1,0 +1,319 @@
+<template>
+  <div v-if="classInfo">
+    <h1>{{ classInfo.title }}</h1>
+    <p>{{ classInfo.description }}</p>
+
+    <n-tabs type="line" animated>
+      <!-- 作业列表 -->
+      <n-tab-pane name="assignments" tab="作业">
+        <n-space vertical>
+          <n-button
+            v-if="isTeacher"
+            type="primary"
+            @click="showCreateAssignmentModal = true"
+          >
+            创建作业
+          </n-button>
+          
+          <n-list>
+            <n-list-item v-for="assignment in assignments" :key="assignment.id">
+              <n-thing>
+                <template #header>
+                  <n-space align="center">
+                    {{ assignment.title }}
+                    <n-tag v-if="assignment.is_expired" type="error">已截止</n-tag>
+                    <n-tag v-if="assignment.is_hidden" type="warning">隐藏</n-tag>
+                  </n-space>
+                </template>
+                <template #description>
+                  <span v-if="assignment.deadline">
+                    截止时间：{{ formatDate(assignment.deadline) }}
+                  </span>
+                </template>
+                {{ assignment.description || '暂无描述' }}
+                <template #action>
+                  <n-space>
+                    <n-button size="small">查看详情</n-button>
+                    <n-button v-if="isTeacher" size="small" type="error" @click="deleteAssignment(assignment.id)">
+                      删除
+                    </n-button>
+                  </n-space>
+                </template>
+              </n-thing>
+            </n-list-item>
+            <n-empty v-if="assignments.length === 0" description="暂无作业" />
+          </n-list>
+        </n-space>
+      </n-tab-pane>
+
+      <!-- 题目列表 -->
+      <n-tab-pane name="problems" tab="题目库">
+        <n-space vertical>
+          <n-space v-if="isTeacher">
+            <n-button type="primary" @click="showAddProblemModal = true">
+              引用主题库题目
+            </n-button>
+            <n-button @click="showCreateProblemModal = true">
+              创建班级专属题目
+            </n-button>
+          </n-space>
+
+          <n-data-table
+            :columns="problemColumns"
+            :data="problems"
+            :pagination="false"
+            :bordered="false"
+          />
+          <n-empty v-if="problems.length === 0" description="暂无题目" />
+        </n-space>
+      </n-tab-pane>
+
+      <!-- 学生管理 -->
+      <n-tab-pane name="students" tab="学生管理" v-if="isTeacher">
+        <n-space vertical>
+          <n-button type="primary" @click="showAddStudentModal = true">
+            添加学生
+          </n-button>
+
+          <n-list>
+            <n-list-item v-for="student in students" :key="student.id">
+              <n-thing>
+                <template #header>
+                  {{ student.user.username }} 
+                  <span v-if="student.user.real_name">({{ student.user.real_name }})</span>
+                </template>
+                <template #description>
+                  学号：{{ student.user.student_id || '无' }}
+                </template>
+                <template #action>
+                  <n-button size="small" type="error" @click="removeStudent(student.user.id)">
+                    移除
+                  </n-button>
+                </template>
+              </n-thing>
+            </n-list-item>
+            <n-empty v-if="students.length === 0" description="暂无学生" />
+          </n-list>
+        </n-space>
+      </n-tab-pane>
+    </n-tabs>
+
+    <!-- 创建作业对话框 -->
+    <n-modal v-model:show="showCreateAssignmentModal" preset="dialog" title="创建作业">
+      <n-form :model="newAssignment" label-placement="left" label-width="80">
+        <n-form-item label="作业标题" required>
+          <n-input v-model:value="newAssignment.title" />
+        </n-form-item>
+        <n-form-item label="作业描述">
+          <n-input v-model:value="newAssignment.description" type="textarea" :rows="3" />
+        </n-form-item>
+        <n-form-item label="截止时间">
+          <n-date-picker
+            v-model:value="newAssignment.deadline"
+            type="datetime"
+            clearable
+            style="width: 100%"
+          />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-space>
+          <n-button @click="showCreateAssignmentModal = false">取消</n-button>
+          <n-button type="primary" @click="createAssignment">创建</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <!-- 添加学生对话框 -->
+    <n-modal v-model:show="showAddStudentModal" preset="dialog" title="添加学生">
+      <n-form :model="addStudentForm" label-placement="left" label-width="80">
+        <n-form-item label="用户ID" required>
+          <n-input-number v-model:value="addStudentForm.user_id" style="width: 100%" />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-space>
+          <n-button @click="showAddStudentModal = false">取消</n-button>
+          <n-button type="primary" @click="addStudent">添加</n-button>
+        </n-space>
+      </template>
+    </n-modal>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted } from 'vue';
+import { useRoute } from 'vue-router';
+import { useMessage } from 'naive-ui';
+import Axios from '@/plugins/axios';
+
+const route = useRoute();
+const message = useMessage();
+
+const classId = route.params.id;
+const classInfo = ref(null);
+const assignments = ref([]);
+const problems = ref([]);
+const students = ref([]);
+
+const showCreateAssignmentModal = ref(false);
+const showAddProblemModal = ref(false);
+const showCreateProblemModal = ref(false);
+const showAddStudentModal = ref(false);
+
+const newAssignment = ref({
+  title: '',
+  description: '',
+  deadline: null,
+  class_obj: classId,
+});
+
+const addStudentForm = ref({
+  user_id: null,
+});
+
+// 是否是教师
+const isTeacher = computed(() => {
+  return classInfo.value && classInfo.value.user_role === 'teacher';
+});
+
+// 格式化日期
+const formatDate = (dateString) => {
+  const date = new Date(dateString);
+  return date.toLocaleString('zh-CN');
+};
+
+// 获取班级信息
+const fetchClassInfo = () => {
+  Axios.get(`class/class/${classId}/`)
+    .then(res => {
+      classInfo.value = res;
+    })
+    .catch(() => {
+      message.error('获取班级信息失败');
+    });
+};
+
+// 获取作业列表
+const fetchAssignments = () => {
+  Axios.get('class/assignment/', { params: { class_id: classId } })
+    .then(res => {
+      assignments.value = res;
+    });
+};
+
+// 获取题目列表
+const fetchProblems = () => {
+  Axios.get('class/class-problem/', { params: { class_id: classId } })
+    .then(res => {
+      problems.value = res;
+    });
+};
+
+// 获取学生列表
+const fetchStudents = () => {
+  if (isTeacher.value) {
+    Axios.get(`class/class/${classId}/students/`)
+      .then(res => {
+        students.value = res;
+      });
+  }
+};
+
+// 创建作业
+const createAssignment = () => {
+  if (!newAssignment.value.title) {
+    message.warning('请输入作业标题');
+    return;
+  }
+
+  const data = {
+    ...newAssignment.value,
+    deadline: newAssignment.value.deadline 
+      ? new Date(newAssignment.value.deadline).toISOString() 
+      : null,
+  };
+
+  Axios.post('class/assignment/', data)
+    .then(() => {
+      message.success('创建成功');
+      showCreateAssignmentModal.value = false;
+      newAssignment.value = {
+        title: '',
+        description: '',
+        deadline: null,
+        class_obj: classId,
+      };
+      fetchAssignments();
+    })
+    .catch(() => {
+      message.error('创建失败');
+    });
+};
+
+// 删除作业
+const deleteAssignment = (id) => {
+  Axios.delete(`class/assignment/${id}/`)
+    .then(() => {
+      message.success('删除成功');
+      fetchAssignments();
+    })
+    .catch(() => {
+      message.error('删除失败');
+    });
+};
+
+// 删除题目
+const deleteProblem = (id) => {
+  Axios.delete(`class/class-problem/${id}/`)
+    .then(() => {
+      message.success('删除成功');
+      fetchProblems();
+    })
+    .catch(() => {
+      message.error('删除失败');
+    });
+};
+
+// 添加学生
+const addStudent = () => {
+  if (!addStudentForm.value.user_id) {
+    message.warning('请输入用户ID');
+    return;
+  }
+
+  Axios.post(`class/class/${classId}/add_student/`, addStudentForm.value)
+    .then(() => {
+      message.success('添加成功');
+      showAddStudentModal.value = false;
+      addStudentForm.value = { user_id: null };
+      fetchStudents();
+    })
+    .catch(err => {
+      message.error(err.response?.data?.error || '添加失败');
+    });
+};
+
+// 移除学生
+const removeStudent = (userId) => {
+  Axios.post(`class/class/${classId}/remove_student/`, { user_id: userId })
+    .then(() => {
+      message.success('移除成功');
+      fetchStudents();
+    })
+    .catch(() => {
+      message.error('移除失败');
+    });
+};
+
+onMounted(() => {
+  fetchClassInfo();
+  fetchAssignments();
+  fetchProblems();
+  setTimeout(() => {
+    if (isTeacher.value) {
+      fetchStudents();
+    }
+  }, 500);
+});
+</script>
