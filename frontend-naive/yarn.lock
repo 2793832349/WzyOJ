@@ -827,6 +827,11 @@ magic-string@^0.30.0:
   dependencies:
     "@jridgewell/sourcemap-codec" "^1.4.13"
 
+markdown-it-multimd-table@^4.2.3:
+  version "4.2.3"
+  resolved "https://registry.yarnpkg.com/markdown-it-multimd-table/-/markdown-it-multimd-table-4.2.3.tgz#b81ac1f6c26482ddf0504c9e25583ad126c03dec"
+  integrity sha512-KepCr2OMJqm7IT6sOIbuqHGe+NERhgy66XMrc5lo6dHW7oaPzMDtYwR1EGwK16/blb6mCSg4jqityOe0o/H7HA==
+
 md-editor-v3@^2.3.0:
   version "2.11.3"
   resolved "https://registry.npmmirror.com/md-editor-v3/-/md-editor-v3-2.11.3.tgz#f66e653034aeff03aca48d7728ce03c504db8d28"

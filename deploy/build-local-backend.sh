@@ -4,9 +4,9 @@
 echo "Building backend from local source..."
 
 # Build the image
-docker-compose build backend
+docker compose build backend
 
 echo "Build complete! Restarting backend container..."
-docker-compose restart backend
+docker compose restart backend
 
 echo "Done! Backend has been updated."

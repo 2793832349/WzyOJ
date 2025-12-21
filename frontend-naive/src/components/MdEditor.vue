@@ -44,6 +44,17 @@ import MdEditor from 'md-editor-v3';
 import 'md-editor-v3/lib/style.css';
 import { ref, toRef, watch } from 'vue';
 import store from '@/store';
+import MultimdTable from '@/plugins/markdown-it-multimd-table-custom';
+
+MdEditor.config({
+  markdownItConfig(md) {
+    md.use(MultimdTable, {
+      multiline: true,
+      rowspan: true,
+      headerless: true,
+    });
+  },
+});
 
 const id = parseInt(Math.random() * 100000).toString();
 

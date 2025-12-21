@@ -50,6 +50,7 @@ const loadData = () => {
     }
     data.value = res;
     if (res.status <= -3) {
+      if (interval) clearInterval(interval);
       interval = setInterval(getStatus, 1000);
     }
   });
@@ -91,14 +92,40 @@ const copy = (text, event = undefined) => {
   document.body.removeChild(input);
   message.success('复制成功');
 };
+
+const rejudge = () => {
+  Axios.post(`/submission/${id}/rejudge/`).then(() => {
+    message.success('已开始重新评测');
+    loadData();
+  });
+};
 </script>
 
 <template>
-  <h1>提交详情</h1>
+  <div
+    style="
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    "
+  >
+    <h1>提交详情</h1>
+    <n-button
+      type="warning"
+      v-if="
+        store.state.user.permissions &&
+        store.state.user.permissions.includes('submission')
+      "
+      @click="rejudge"
+    >
+      重新评测
+    </n-button>
+  </div>
   <n-layout-content v-if="data.id">
     <n-spin :show="data.status <= -3">
       <template #description>正在评测中...</template>
-      <SubmissionTable :data="[data]" />
+      <SubmissionTable :data="[data]" @refresh="loadData" />
     </n-spin>
   </n-layout-content>
   <n-collapse

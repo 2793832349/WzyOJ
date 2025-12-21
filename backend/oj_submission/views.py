@@ -108,6 +108,40 @@ class SubmissionViewSet(ReadOnlyModelViewSet, CreateModelMixin, DestroyModelMixi
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True,
+            methods=['post'],
+            permission_classes=[IsAuthenticatedAndReadCreate],
+            url_path='rejudge')
+    def rejudge(self, request, pk=None):
+        submission = self.get_object()
+        if self.permission not in request.user.permissions:
+            return Response(
+                {'error': '只有管理员可以重新评测'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        submission.status = StatusChoices.PENDING
+        submission.score = 0
+        submission.execute_time = 0
+        submission.execute_memory = 0
+        submission.detail = []
+        submission.log = ''
+        submission.save()
+
+        from .tasks import judge
+        judge.delay(
+            submission.id, submission.problem.test_case.test_case_id,
+            submission.problem.test_case.spj_id
+            if submission.problem.test_case.use_spj else None,
+            submission.problem.test_case.test_case_config,
+            submission.problem.test_case.subcheck_config
+            if submission.problem.test_case.use_subcheck else None,
+            submission.language, submission.source, {
+                'max_cpu_time': submission.problem.time_limit,
+                'max_memory': submission.problem.memory_limit * 1024 * 1024,
+            })
+        return Response({'status': 'rejudging'})
+
+    @action(detail=True,
             methods=['get'],
             permission_classes=[IsAuthenticatedAndReadOnly],
             url_path='status')

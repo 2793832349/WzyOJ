@@ -31,6 +31,6 @@ mkdir -p ./data/frontend
 docker run --rm -v "$(pwd)/data/frontend:/output" genuine-oj/frontend-builder-local
 
 echo "Build complete! Restarting frontend container..."
-docker-compose restart frontend
+docker compose restart frontend
 
 echo "Done! Frontend has been updated."
