@@ -1,7 +1,6 @@
-'use strict';
-var DFA = require('./lib/dfa.js');
+import DFA from 'markdown-it-multimd-table/lib/dfa.js';
 
-module.exports = function multimd_table_plugin(md, options) {
+export default function multimd_table_plugin(md, options) {
   var defaults = {
     multiline:  false,
     rowspan:    false,
@@ -312,9 +311,12 @@ module.exports = function multimd_table_plugin(md, options) {
         range = [ trToken.meta.bounds[c] + 1, trToken.meta.bounds[c + 1] ];
         text = state.src.slice.apply(state.src, range);
 
-        if (text === '') {
-          colspan = leftToken.attrGet('colspan');
-          leftToken.attrSet('colspan', colspan === null ? 2 : colspan + 1);
+        if (text.trim() === '') {
+          if (leftToken && leftToken.tag) {
+            colspan = leftToken.attrGet('colspan');
+            leftToken.attrSet('colspan', colspan === null ? 2 : colspan + 1);
+            upTokens[c] = leftToken;
+          }
           continue;
         }
 
@@ -389,7 +391,11 @@ module.exports = function multimd_table_plugin(md, options) {
     return true;
   }
 
-  md.block.ruler.at('table', table, { alt: [ 'paragraph', 'reference' ] });
+  try {
+    md.block.ruler.at('table', table, { alt: [ 'paragraph', 'reference' ] });
+  } catch (e) {
+    md.block.ruler.before('paragraph', 'table', table, { alt: [ 'paragraph', 'reference' ] });
+  }
 };
 
 /* vim: set ts=2 sw=2 et: */
