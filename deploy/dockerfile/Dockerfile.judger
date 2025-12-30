@@ -11,27 +11,61 @@ RUN if [ "$USE_MIRROR" = "true" ]; then \
 ENV DEBIAN_FRONTEND=noninteractive
 RUN buildDeps='software-properties-common git libtool cmake python3-dev python3-pip libseccomp-dev curl' && \
     apt-get update && apt-get install -y python3 python3-pkg-resources $buildDeps && \
-    apt-get install -y gcc-9 g++-9 && \
-    update-alternatives --install  /usr/bin/gcc gcc /usr/bin/gcc-9 40 && \
-    update-alternatives --install  /usr/bin/g++ g++ /usr/bin/g++-9 40 && \
+    add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
+    apt-get update && apt-get install -y gcc-13 g++-13 && \
+    update-alternatives --install  /usr/bin/gcc gcc /usr/bin/gcc-13 80 && \
+    update-alternatives --install  /usr/bin/g++ g++ /usr/bin/g++-13 80 && \
     echo "STAGE 0 [\033[32mPASS\033[0m]" && \
     cd /tmp
+
 RUN if [ "$USE_MIRROR" = "true" ]; then \
     git clone https://ghproxy.com/https://github.com/genuine-oj/judger-core.git core; \
     else \
     git clone https://github.com/genuine-oj/judger-core.git core; \
     fi
+
 RUN cd core && \
     mkdir build && cd build && cmake .. && make && make install && cd ../wrapper && \
     python3 setup.py install && \
     echo "STAGE 1 [\033[32mPASS\033[0m]"
+
 RUN cd /
+
 RUN if [ "$USE_MIRROR" = "true" ]; then \
     git clone https://ghproxy.com/https://github.com/genuine-oj/judger.git code; \
     else \
     git clone https://github.com/genuine-oj/judger.git code; \
     fi
+
 RUN cd /code && bash deploy.sh
+
+RUN sed -i 's/-std=c++14/-std=c++23/g' /code/languages.py
+RUN sed -i 's/128 \* 1024 \* 1024/1024 * 1024 * 1024/g' /code/languages.py
+
+RUN python3 - <<'PY'
+from pathlib import Path
+import re
+
+p = Path('/code/languages.py')
+s = p.read_text(encoding='utf-8')
+
+s = re.sub(
+    r"('cpp':\s*\{\s*'compile':\s*\{.*?'max_cpu_time':\s*)\n\s*3000,",
+    r"\1\n            10000,",
+    s,
+    flags=re.S,
+    count=1,
+)
+s = re.sub(
+    r"('cpp':\s*\{\s*'compile':\s*\{.*?'max_real_time':\s*)\n\s*5000,",
+    r"\1\n            20000,",
+    s,
+    flags=re.S,
+    count=1,
+)
+
+p.write_text(s, encoding='utf-8')
+PY
 
 COPY ./config/judger-config.py /code/config.py
 
@@ -40,6 +74,7 @@ RUN if [ "$USE_MIRROR" = "true" ]; then \
     else \
     pip3 install -I --no-cache-dir -r /code/requirements.txt; \
     fi
+
 RUN echo "STAGE 2 [\033[32mPASS\033[0m]" && \
     apt-get purge -y --auto-remove $buildDeps && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \
