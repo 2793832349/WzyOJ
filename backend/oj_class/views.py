@@ -3,8 +3,9 @@ from zipfile import ZipFile
 from django.conf import settings
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from oj_backend.permissions import Granted, IsAuthenticatedAndReadOnly
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
@@ -20,8 +21,27 @@ class ClassViewSet(viewsets.ModelViewSet):
     """班级视图集"""
     queryset = Class.objects.all()
     serializer_class = ClassSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [Granted | IsAuthenticatedAndReadOnly]
+    permission = 'class'
     
+    def update(self, request, *args, **kwargs):
+        class_obj = self.get_object()
+        if not (request.user.is_staff or class_obj.teacher_id == request.user.id):
+            return Response(
+                {'error': '只有教师可以编辑班级'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().update(request, *args, **kwargs)
+
+    def partial_update(self, request, *args, **kwargs):
+        class_obj = self.get_object()
+        if not (request.user.is_staff or class_obj.teacher_id == request.user.id):
+            return Response(
+                {'error': '只有教师可以编辑班级'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().partial_update(request, *args, **kwargs)
+
     def get_queryset(self):
         """过滤查询集"""
         user = self.request.user
@@ -47,6 +67,11 @@ class ClassViewSet(viewsets.ModelViewSet):
     
     def perform_create(self, serializer):
         """创建班级时设置教师为当前用户"""
+        user = self.request.user
+        # 兜底校验：只允许拥有班级管理权限的用户创建
+        # 注：正常情况下会被 permission_classes 拦截；这里是额外防线
+        if not (user.is_superuser or user.is_staff or 'class' in user.permissions):
+            raise PermissionDenied('只有教师可以创建班级')
         class_obj = serializer.save(teacher=self.request.user)
         # 自动将创建者添加为教师成员
         ClassStudent.objects.create(
@@ -198,7 +223,8 @@ class ClassProblemViewSet(viewsets.ModelViewSet):
     """班级题目视图集"""
     queryset = ClassProblem.objects.all()
     serializer_class = ClassProblemSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [Granted | IsAuthenticatedAndReadOnly]
+    permission = 'class'
     
     def get_queryset(self):
         """过滤查询集"""
@@ -365,7 +391,8 @@ class AssignmentViewSet(viewsets.ModelViewSet):
     """作业视图集"""
     queryset = Assignment.objects.all()
     serializer_class = AssignmentSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [Granted | IsAuthenticatedAndReadOnly]
+    permission = 'class'
     
     def get_queryset(self):
         """过滤查询集"""

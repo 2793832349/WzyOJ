@@ -61,6 +61,17 @@ class ProblemSolved(serializers.ReadOnlyField):
 
     def to_representation(self, value):
         request = self.context.get('request')
+        if not request or not getattr(request, 'user', None) or not request.user.is_authenticated:
+            return False
+
+        solved_ids = self.context.get('solved_problem_ids', None)
+        instance = getattr(value, 'instance', None)
+        if solved_ids is not None and instance is not None:
+            try:
+                return instance.id in solved_ids
+            except TypeError:
+                pass
+
         return value.filter(user=request.user).exists()
 
 

@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { Codemirror } from 'vue-codemirror';
 import { cpp } from '@codemirror/lang-cpp';
 import { python } from '@codemirror/lang-python';

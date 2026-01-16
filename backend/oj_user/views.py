@@ -19,9 +19,9 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import ReadOnlyModelViewSet, ModelViewSet
 
 from .models import User
-from .serializers import (ChangePasswordSerializer, LoginSerializer,
-                          UserBriefSerializer, UserDetailSerializer,
-                          UserSerializer)
+from .serializers import (ChangePasswordSerializer, CreateUserSerializer,
+                          LoginSerializer, UserBriefSerializer,
+                          UserDetailSerializer, UserSerializer)
 
 
 def deep_update(a: dict, b: dict, skip: list = []):
@@ -98,6 +98,8 @@ class UserViewSet(ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'list':
             return UserSerializer  # 使用 UserSerializer 以包含权限和状态信息
+        elif self.action == 'create':
+            return CreateUserSerializer
         elif self.action == 'update':
             return UserSerializer
         return UserDetailSerializer
@@ -229,11 +231,11 @@ class InfoAPIView(GenericAPIView):
     serializer_class = UserSerializer
 
     def get(self, request, *args, **kwargs):
-        if request.user.is_superuser and len(request.user.permissions) != 6:
+        if request.user.is_superuser and len(request.user.permissions) != 7:
             request.user.is_staff = True
             request.user.permissions = [
                 'site_setting', 'problem', 'submission', 'contest',
-                'discussion', 'user'
+                'discussion', 'user', 'class'
             ]
             request.user.save()
         serializer = self.get_serializer(instance=request.user)
@@ -252,7 +254,7 @@ class InfoAPIView(GenericAPIView):
 
 
 class SiteSettingsView(GenericAPIView):
-    permission_classes = [ReadOnly | IsAdminUser]
+    permission_classes = [ReadOnly | Granted]
     permission = 'site_setting'
 
     def get(self, request, *args, **kwargs):

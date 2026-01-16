@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import Axios from '@/plugins/axios';
+import { useMessage } from 'naive-ui';
 
 import store from '@/store';
 import UserTable from '@/components/UserTable.vue';
@@ -14,6 +15,59 @@ const pagination = ref({ pageSize: 20, page: 1, count: 0 }),
   search = ref(''),
   data = ref([]),
   loading = ref(false);
+
+const showCreateUser = ref(false);
+const createUserForm = ref({ username: '', password: '', role: 'student' });
+const createUserLoading = ref(false);
+const message = useMessage();
+
+const roleOptions = [
+  { label: '学生', value: 'student' },
+  { label: '教师', value: 'teacher' },
+  { label: '管理员', value: 'admin' },
+];
+
+const getPermissionsByRole = role => {
+  switch (role) {
+    case 'admin':
+      return [
+        'site_setting',
+        'user',
+        'problem',
+        'submission',
+        'discussion',
+        'contest',
+        'class',
+      ];
+    case 'teacher':
+      return ['problem', 'contest', 'class'];
+    case 'student':
+    default:
+      return [];
+  }
+};
+
+const submitCreateUser = () => {
+  if (!createUserForm.value.username || !createUserForm.value.password) {
+    message.error('用户名或密码不能为空');
+    return;
+  }
+  createUserLoading.value = true;
+  Axios.post('/user/', {
+    username: createUserForm.value.username,
+    password: createUserForm.value.password,
+    permissions: getPermissionsByRole(createUserForm.value.role),
+  })
+    .then(() => {
+      message.success('创建成功');
+      showCreateUser.value = false;
+      createUserForm.value = { username: '', password: '', role: 'student' };
+      handleQueryChange();
+    })
+    .finally(() => {
+      createUserLoading.value = false;
+    });
+};
 const writeSearchToQuery = () => {
   const _search = { search: search.value };
   _writeSearchToQuery(_search, pagination.value, route)();
@@ -65,17 +119,17 @@ handleQueryChange();
           </n-form-item>
         </n-form>
       </div>
-      <router-link
-        :to="{ name: 'register' }"
+      <n-button
+        style="float: right; margin-top: 25px"
+        type="primary"
         v-if="store.state.user.permissions.includes('user')"
+        @click="showCreateUser = true"
       >
-        <n-button style="float: right; margin-top: 25px" type="primary">
-          <template #icon>
-            <n-icon :component="AddOutline" />
-          </template>
-          创建用户
-        </n-button>
-      </router-link>
+        <template #icon>
+          <n-icon :component="AddOutline" />
+        </template>
+        创建用户
+      </n-button>
     </n-layout-content>
     <n-layout-content>
       <UserTable :data="data" :loading="loading" @refresh="handleQueryChange" />
@@ -100,5 +154,24 @@ handleQueryChange();
         />
       </div>
     </n-layout-content>
+    <n-modal v-model:show="showCreateUser" preset="card" title="创建用户" style="width: min(92vw, 420px)">
+      <n-form>
+        <n-form-item label="初始角色">
+          <n-select v-model:value="createUserForm.role" :options="roleOptions" />
+        </n-form-item>
+        <n-form-item label="用户名">
+          <n-input v-model:value="createUserForm.username" />
+        </n-form-item>
+        <n-form-item label="密码">
+          <n-input v-model:value="createUserForm.password" type="password" />
+        </n-form-item>
+        <n-form-item>
+          <n-space>
+            <n-button type="primary" :loading="createUserLoading" @click="submitCreateUser">创建</n-button>
+            <n-button @click="showCreateUser = false" :disabled="createUserLoading">取消</n-button>
+          </n-space>
+        </n-form-item>
+      </n-form>
+    </n-modal>
   </n-layout>
 </template>

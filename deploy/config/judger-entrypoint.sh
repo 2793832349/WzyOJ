@@ -9,4 +9,5 @@ chown compiler:spj /judger/spj
 chmod 710 /judger/spj
 
 echo "Dispatching the WS server."
-exec python3 -u server.py
+export PYTHONDONTWRITEBYTECODE=1
+exec python3 -B -u server.py

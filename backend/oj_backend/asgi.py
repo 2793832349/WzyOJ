@@ -20,6 +20,8 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'oj_backend.settings')
 django_asgi_app = get_asgi_application()
 
 import oj_submission.routing
+import oj_battle.routing
+import oj_live.routing
 
 application = ProtocolTypeRouter({
     'http': django_asgi_app,
@@ -27,6 +29,8 @@ application = ProtocolTypeRouter({
         AuthMiddlewareStack(
             URLRouter(
                 oj_submission.routing.websocket_urlpatterns
+                + oj_battle.routing.websocket_urlpatterns
+                + oj_live.routing.websocket_urlpatterns
             )
         )
     )

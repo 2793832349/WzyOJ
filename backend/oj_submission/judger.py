@@ -3,7 +3,9 @@ import json
 import base64
 from pathlib import Path
 from websocket import create_connection
+from websocket import WebSocketConnectionClosedException, WebSocketTimeoutException
 import enum
+import time
 
 from .models import StatusChoices
 
@@ -32,11 +34,39 @@ ResultMapping = {
 class JudgeClient(object):
 
     def __init__(self):
-        self.client = create_connection(f'ws://{settings.JUDGE_SERVER}/')
+        self.client = create_connection(f'ws://{settings.JUDGE_SERVER}/', timeout=10)
+        ws_timeout = getattr(settings, 'JUDGE_CLIENT_TIMEOUT', None)
+        if ws_timeout is None or ws_timeout <= 0:
+            ws_timeout = 120
+        self.client.settimeout(ws_timeout)
 
     def recv(self):
         try:
             data = json.loads(self.client.recv())
+        except (WebSocketTimeoutException, TimeoutError):
+            return {
+                'type': 'final',
+                'status': JudgeResult.SYSTEM_ERROR,
+                'score': 0,
+                'statistics': {
+                    'max_time': 0,
+                    'max_memory': 0
+                },
+                'log': 'Judge server timeout',
+                'detail': []
+            }
+        except WebSocketConnectionClosedException:
+            return {
+                'type': 'final',
+                'status': JudgeResult.SYSTEM_ERROR,
+                'score': 0,
+                'statistics': {
+                    'max_time': 0,
+                    'max_memory': 0
+                },
+                'log': 'Judge server connection closed',
+                'detail': []
+            }
         except json.decoder.JSONDecodeError:
             return {
                 'type': 'final',
@@ -47,6 +77,18 @@ class JudgeClient(object):
                     'max_memory': 0
                 },
                 'log': 'Failed to decode judge server result',
+                'detail': []
+            }
+        except Exception as e:
+            return {
+                'type': 'final',
+                'status': JudgeResult.SYSTEM_ERROR,
+                'score': 0,
+                'statistics': {
+                    'max_time': 0,
+                    'max_memory': 0
+                },
+                'log': f'Judge client error: {type(e).__name__}: {e}',
                 'detail': []
             }
         return data
@@ -63,19 +105,38 @@ class JudgeClient(object):
             'code': code,
             'limit': limit
         }
-        self.client.send(json.dumps(task_data))
-        detail_path = Path(f'{settings.SUBMISSION_ROOT}/{task_id}')
-        while True:
-            result = self.recv()
-            if result['type'] == 'compile':
-                # print(f'Compile log: {result["data"]}')
-                detail_path.mkdir(exist_ok=True)
-            elif result['type'] == 'part':
-                detail_file = detail_path / f'{result["test_case"]}.out'
-                output = base64.b64decode(result['output'])
-                detail_file.write_bytes(output)
-                # print(f'{result["test_case"]}: {output}')
-            elif result['type'] == 'final':
-                break
-        self.client.close()
-        return result
+        start = time.time()
+        timeout = getattr(settings, 'JUDGE_TASK_TIMEOUT', None)
+        if timeout is None or timeout <= 0:
+            timeout = 300
+        try:
+            self.client.send(json.dumps(task_data))
+            detail_path = Path(f'{settings.SUBMISSION_ROOT}/{task_id}')
+            while True:
+                if time.time() - start > timeout:
+                    return {
+                        'type': 'final',
+                        'status': JudgeResult.SYSTEM_ERROR,
+                        'score': 0,
+                        'statistics': {
+                            'max_time': 0,
+                            'max_memory': 0
+                        },
+                        'log': 'Judge task timeout',
+                        'detail': []
+                    }
+                result = self.recv()
+                if result.get('type') == 'compile':
+                    detail_path.mkdir(exist_ok=True)
+                elif result.get('type') == 'part':
+                    detail_path.mkdir(exist_ok=True)
+                    detail_file = detail_path / f'{result["test_case"]}.out'
+                    output = base64.b64decode(result['output'])
+                    detail_file.write_bytes(output)
+                elif result.get('type') == 'final':
+                    return result
+        finally:
+            try:
+                self.client.close()
+            except Exception:
+                pass

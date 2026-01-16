@@ -46,7 +46,7 @@ const getUserRole = (user) => {
     return 'admin';
   }
   // 如果有题目、比赛权限，视为教师
-  if (user.permissions.includes('problem') || user.permissions.includes('contest')) {
+  if (user.permissions.includes('problem') || user.permissions.includes('contest') || user.permissions.includes('class')) {
     return 'teacher';
   }
   return 'student';
@@ -56,9 +56,9 @@ const getUserRole = (user) => {
 const getPermissionsByRole = (role) => {
   switch (role) {
     case 'admin':
-      return ['site_setting', 'user', 'problem', 'submission', 'discussion', 'contest'];
+      return ['site_setting', 'user', 'problem', 'submission', 'discussion', 'contest', 'class'];
     case 'teacher':
-      return ['problem', 'contest'];
+      return ['problem', 'contest', 'class'];
     case 'student':
     default:
       return [];

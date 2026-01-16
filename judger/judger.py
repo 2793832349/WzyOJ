@@ -246,14 +246,14 @@ class Judger(object):
                 elif spj_run_result['exit_code'] == 1:
                     status = JudgeResult.WRONG_ANSWER
                     result = (working_dir / f'{case_name}.out').read_text(
-                        encoding='utf-8', errors='Failed to get output!')
+                        encoding='utf-8', errors='replace')
                     output = base64.b64encode(result.encode('utf-8'))
                 else:
                     status, result = JudgeResult.SYSTEM_ERROR, 'SPJ Error!'
                     output = 'SPJ error, info: ' + (
                         working_dir / spj_out).read_text(
                             encoding='utf-8',
-                            errors='Failed to get SPJ output!')
+                            errors='replace')
                     output = base64.b64encode(output.encode('utf-8'))
                     run_result = spj_run_result
             else:
@@ -297,11 +297,11 @@ class Judger(object):
         ans_md5_file = self.test_case / f'{case_name}.md5'
         if not ans_md5_file.exists():
             return JudgeResult.SYSTEM_ERROR, 'Test answer hash not found!'
-        ans_md5 = ans_md5_file.read_text(encoding='utf-8', errors='ERROR')
+        ans_md5 = ans_md5_file.read_text(encoding='utf-8', errors='replace')
         if content_md5 == ans_md5:
             return JudgeResult.ACCEPTED, ''
         return JudgeResult.WRONG_ANSWER, content.decode(
-            encoding='utf-8', errors='Failed to decode output!')
+            encoding='utf-8', errors='replace')
 
     @staticmethod
     def make_report(status, score, max_time, max_memory, log, detail):

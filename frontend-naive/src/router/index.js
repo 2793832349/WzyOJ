@@ -176,6 +176,36 @@ const routes = [
     },
   },
   {
+    path: '/battle/',
+    name: 'battle_lobby',
+    component: () => import('@/pages/battle/index.vue'),
+    meta: {
+      title: '对战',
+      cate: 'battle',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/battle/leaderboard/',
+    name: 'battle_leaderboard',
+    component: () => import('@/pages/battle/leaderboard.vue'),
+    meta: {
+      title: '对战排行榜',
+      cate: 'battle',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/battle/:id/',
+    name: 'battle_room',
+    component: () => import('@/pages/battle/_id.vue'),
+    meta: {
+      title: '对战房间',
+      cate: 'battle',
+      requiredLogin: true,
+    },
+  },
+  {
     path: '/problemset/',
     name: 'problemset_list',
     component: () => import('@/pages/problemset/index.vue'),
@@ -217,6 +247,60 @@ const routes = [
       requiredLogin: true,
       requiredAdmin: true,
       permission: 'contest',
+    },
+  },
+  {
+    path: '/course/',
+    name: 'course_list',
+    component: () => import('@/pages/course/index.vue'),
+    meta: {
+      title: '课程',
+      cate: 'course',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/course/:id/',
+    name: 'course_detail',
+    component: () => import('@/pages/course/_id.vue'),
+    meta: {
+      title: '课程 #{id}',
+      cate: 'course',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/course/:id/live/',
+    name: 'course_live',
+    component: () => import('@/pages/course/live.vue'),
+    meta: {
+      title: '直播课堂',
+      cate: 'course',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/course/create/',
+    name: 'course_create',
+    component: () => import('@/pages/course/edit.vue'),
+    meta: {
+      title: '创建课程',
+      cate: 'course',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'class',
+    },
+  },
+  {
+    path: '/course/:id/edit/',
+    name: 'course_edit',
+    component: () => import('@/pages/course/edit.vue'),
+    meta: {
+      title: '编辑课程 #{id}',
+      cate: 'course',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'class',
     },
   },
   {
@@ -308,6 +392,30 @@ const routes = [
       title: '班级题目 #{problemId}',
       cate: 'class',
       requiredLogin: true,
+    },
+  },
+  {
+    path: '/tools/excalidraw/',
+    name: 'tools_excalidraw',
+    component: () => import('@/pages/tools/excalidraw.vue'),
+    meta: {
+      title: '画板（Excalidraw）',
+      cate: 'tools',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'problem',
+    },
+  },
+  {
+    path: '/tools/contest-batch-judge/',
+    name: 'tools_contest_batch_judge',
+    component: () => import('@/pages/tools/contest_batch_judge.vue'),
+    meta: {
+      title: '比赛批量上传评测',
+      cate: 'tools',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'contest',
     },
   },
   {

@@ -38,6 +38,13 @@ if MODE == 'PRODUCTION':
             'OPTIONS': {
                 'CLIENT_CLASS': 'django_redis.client.DefaultClient'
             }
+        },
+        'contest_progress': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': f'{REDIS_URI}/3',
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient'
+            }
         }
     }
 elif MODE == 'TEST':
@@ -55,6 +62,13 @@ elif MODE == 'TEST':
             'OPTIONS': {
                 'CLIENT_CLASS': 'django_redis.client.DefaultClient'
             }
+        },
+        'contest_progress': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': f'{REDIS_URI}/3',
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient'
+            }
         }
     }
 else:
@@ -68,13 +82,17 @@ else:
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        },
+        'contest_progress': {
+            'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+            'LOCATION': str(BASE_DIR / 'cache' / 'contest_progress'),
         }
     }
 
 ALLOWED_HOSTS = ['*']
 
 VENDOR_APPS = [
-    # 'channels',
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -91,8 +109,11 @@ LOCAL_APPS = [
     'oj_problem.apps.ProblemConfig',
     'oj_submission.apps.SubmissionConfig',
     'oj_contest.apps.ContestConfig',
+    'oj_battle.apps.BattleConfig',
     'oj_discussion.apps.DiscussionConfig',
     'oj_class.apps.OjClassConfig',
+    'oj_course.apps.CourseConfig',
+    'oj_live.apps.LiveConfig',
 ]
 
 INSTALLED_APPS = VENDOR_APPS + LOCAL_APPS
@@ -130,7 +151,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'oj_backend.wsgi.application'
-# ASGI_APPLICATION = 'oj_backend.asgi.application'
+ASGI_APPLICATION = 'oj_backend.asgi.application'
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -217,3 +238,7 @@ JUDGE_DATA_ROOT = Path(os.getenv('OJ_JUDGE_DATA_ROOT',
 SUBMISSION_ROOT = JUDGE_DATA_ROOT / 'submission'
 TEST_DATA_ROOT = JUDGE_DATA_ROOT / 'test_data'
 SPJ_ROOT = JUDGE_DATA_ROOT / 'spj'
+
+DEEPSEEK_BASE_URL = os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
+DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
+DEEPSEEK_MODEL = os.getenv('DEEPSEEK_MODEL', 'deepseek-chat')

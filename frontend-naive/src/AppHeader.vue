@@ -1,5 +1,5 @@
 <script setup>
-import { h } from 'vue';
+import { computed, h } from 'vue';
 import store from './store';
 import router from './router';
 import { useRoute } from 'vue-router';
@@ -13,6 +13,7 @@ import {
   ControlOutlined,
   CommentOutlined,
   TeamOutlined,
+  ThunderboltOutlined,
 } from '@vicons/antd';
 import {
   LogOutOutline,
@@ -24,6 +25,7 @@ import {
   SunnyOutline,
   MoonOutline,
   ListOutline,
+  SchoolOutline,
 } from '@vicons/ionicons5';
 import config from './config';
 
@@ -36,7 +38,7 @@ const renderIcon = icon => {
     });
 };
 
-const userOptions = [
+const baseUserOptions = [
   {
     label: '个人主页',
     key: 'user_detail',
@@ -53,13 +55,44 @@ const userOptions = [
     icon: renderIcon(LogOutOutline),
   },
 ];
-if (store.state.user.permissions.includes('site_setting')) {
-  userOptions.splice(2, 0, {
-    label: '站点设置',
-    key: 'site_settings',
-    icon: renderIcon(ControlOutlined),
-  });
-}
+
+const userOptions = computed(() => {
+  const permissions = store.state.user?.permissions || [];
+  const options = [...baseUserOptions];
+  if (permissions.includes('site_setting')) {
+    options.splice(2, 0, {
+      label: '站点设置',
+      key: 'site_settings',
+      icon: renderIcon(ControlOutlined),
+    });
+  }
+  return options;
+});
+
+const canSeeToolsNav = computed(() => {
+  const permissions = store.state.user?.permissions || [];
+  return (
+    permissions.includes('problem') ||
+    permissions.includes('site_setting') ||
+    permissions.includes('contest')
+  );
+});
+
+const toolsOptions = [
+  {
+    label: '画板（Excalidraw）',
+    key: 'tools_excalidraw',
+  },
+  {
+    label: '比赛批量上传评测',
+    key: 'tools_contest_batch_judge',
+  },
+];
+
+const handleToolsSelect = key => {
+  router.push({ name: key });
+};
+
 const handleUserOptionSelect = key => {
   if (key === 'logout') {
     Axios.get('/user/logout/').then(() => {
@@ -110,6 +143,17 @@ const handleUserOptionSelect = key => {
           比赛
         </n-button>
       </router-link>
+      <router-link :to="{ name: 'battle_lobby' }" v-if="store.getters.loggedIn">
+        <n-button
+          :tertiary="route.meta.cate === 'battle'"
+          :quaternary="route.meta.cate !== 'battle'"
+        >
+          <template #icon>
+            <n-icon :component="ThunderboltOutlined" />
+          </template>
+          对战
+        </n-button>
+      </router-link>
       <router-link :to="{ name: 'problemset_list' }">
         <n-button
           :tertiary="route.meta.cate === 'problemset'"
@@ -119,6 +163,17 @@ const handleUserOptionSelect = key => {
             <n-icon :component="ListOutline" />
           </template>
           题单
+        </n-button>
+      </router-link>
+      <router-link :to="{ name: 'course_list' }" v-if="store.getters.loggedIn">
+        <n-button
+          :tertiary="route.meta.cate === 'course'"
+          :quaternary="route.meta.cate !== 'course'"
+        >
+          <template #icon>
+            <n-icon :component="SchoolOutline" />
+          </template>
+          课程
         </n-button>
       </router-link>
       <router-link :to="{ name: 'class_list' }" v-if="store.getters.loggedIn">
@@ -168,6 +223,20 @@ const handleUserOptionSelect = key => {
           用户
         </n-button>
       </router-link>
+
+      <n-dropdown
+        v-if="store.getters.loggedIn && canSeeToolsNav"
+        trigger="hover"
+        :options="toolsOptions"
+        @select="handleToolsSelect"
+      >
+        <n-button
+          :tertiary="route.meta.cate === 'tools'"
+          :quaternary="route.meta.cate !== 'tools'"
+        >
+          工具导航
+        </n-button>
+      </n-dropdown>
     </n-space>
   </div>
   <div style="display: inline; float: right">

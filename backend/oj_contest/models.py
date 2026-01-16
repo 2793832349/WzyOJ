@@ -37,10 +37,14 @@ class Contest(models.Model):
 
     @property
     def hide_discussions(self):
+        now = timezone.now()
+        in_contest_window = (
+            self.start_time and self.end_time and self.start_time < now
+            and self.end_time > now
+        )
         return any([
             self.is_hidden,
-            self.start_time < timezone.now()
-            and self.end_time > timezone.now(),
+            in_contest_window,
         ])
 
     class Meta:
@@ -64,9 +68,12 @@ class ContestProblem(models.Model):
         on_delete=models.CASCADE,
     )
 
+    order = models.IntegerField(_('order'), default=0)
+
     class Meta:
         verbose_name = _('contest problem')
         verbose_name_plural = _('contest problems')
+        ordering = ['order', 'id']
 
     def __str__(self):
         return f'{self.contest.title} - {self.problem.title}'

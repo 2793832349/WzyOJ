@@ -15,6 +15,12 @@ Axios.interceptors.request.use(
       config.baseURL = undefined; // Clear baseURL to prevent double prepending
     }
     
+    // Add authentication token if available
+    const token = store.state.user?.token;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    
     return config;
   },
   error => {
@@ -62,9 +68,13 @@ Axios.interceptors.response.use(
           return Promise.reject(error.response);
         }
       }
-      if (error.response.data.message) {
-        window.$message.error(error.response.data.message);
-        return Promise.reject(error.response.data.message);
+      const reason =
+        error.response.data?.message ??
+        error.response.data?.detail ??
+        error.response.data?.error;
+      if (reason) {
+        window.$message.error(reason);
+        return Promise.reject(reason);
       }
       window.$message.error('身份校验失败');
       return Promise.reject('身份校验失败');

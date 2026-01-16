@@ -10,10 +10,14 @@ class Granted(BasePermission):
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
-        if request.user and request.user.is_superuser:
+        if request.user and (request.user.is_superuser or request.user.is_staff):
             return True
         permission = getattr(view, 'permission', None)
-        return permission in request.user.permissions
+        perms = getattr(request.user, 'permissions', None) or []
+        try:
+            return permission in perms
+        except TypeError:
+            return False
 
 
 class IsAuthenticatedAndReadOnly(BasePermission):
@@ -43,8 +47,10 @@ class Captcha(BasePermission):
         if request.method != 'POST':
             return True
 
-        settings = cache.get('site_settings').get('captcha', {})
-        if settings.get('enableb') is not True:
+        site_settings = cache.get('site_settings') or {}
+        settings = site_settings.get('captcha', {})
+        enabled = settings.get('enabled', settings.get('enableb', False))
+        if enabled is not True:
             return True
         elif view.scene not in settings.get('scenes', []):
             return True

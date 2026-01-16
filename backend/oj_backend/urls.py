@@ -11,9 +11,12 @@ urlpatterns = [
     path('problem/', include('oj_problem.urls')),
     path('submission/', include('oj_submission.urls')),
     path('contest/', include('oj_contest.urls')),
+    path('battle/', include('oj_battle.urls')),
+    path('live/', include('oj_live.urls')),
     path('discussion/', include('oj_discussion.urls')),
     path('user/', include('oj_user.urls')),
     path('class/', include('oj_class.urls')),
+    path('course/', include('oj_course.urls')),
     path('site_settings/', SiteSettingsView.as_view()),
     path('admin/', admin.site.urls),
 ]

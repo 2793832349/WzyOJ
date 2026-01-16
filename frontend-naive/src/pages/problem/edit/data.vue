@@ -22,6 +22,48 @@ const data = ref({
   subcheck_cases = ref([]);
 let newCases = [];
 
+const downloadingAll = ref(false);
+const deletingAll = ref(false);
+
+const downloadAllData = async () => {
+  downloadingAll.value = true;
+  try {
+    // 直接使用 window.open 或 a 标签下载，避免大文件的 blob 处理问题
+    const token = localStorage.getItem('token');
+    
+    // 先检查文件是否存在（使用 HEAD 请求）
+    const checkResponse = await fetch(`/api/problem/${id}/download-all-data/`, {
+      method: 'HEAD',
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {},
+    });
+    
+    if (!checkResponse.ok) {
+      if (checkResponse.status === 404) {
+        message.error('该题目暂无测试数据，请先上传测试数据');
+      } else {
+        message.error('下载失败：' + (checkResponse.statusText || '未知错误'));
+      }
+      return;
+    }
+    
+    // 使用隐藏的 iframe 或直接打开链接来下载
+    // 这样浏览器会处理下载，不会阻塞 UI
+    const link = document.createElement('a');
+    link.href = `/api/problem/${id}/download-all-data/`;
+    link.setAttribute('download', `problem_${id}_testdata.zip`);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    
+    message.success('开始下载测试数据...');
+  } catch (err) {
+    console.error('Download error:', err);
+    message.error('下载失败：' + (err.message || '网络错误'));
+  } finally {
+    downloadingAll.value = false;
+  }
+};
+
 const init = () => {
   data.value = {
     test_case_config: [],
@@ -40,6 +82,44 @@ const init = () => {
         subcheck_cases.value[item.subcheck].push(item.name);
     }
   });
+};
+
+const deleteAllData = async () => {
+  if (!data.value.test_case_config || data.value.test_case_config.length === 0) {
+    message.warning('没有测试数据可删除');
+    return;
+  }
+  
+  // 确认删除
+  if (!confirm(`确定要删除所有 ${data.value.test_case_config.length} 个测试点吗？此操作不可撤销！`)) {
+    return;
+  }
+  
+  deletingAll.value = true;
+  try {
+    // 将所有测试点添加到删除列表
+    const allCaseNames = data.value.test_case_config.map(item => item.name);
+    
+    // 提交删除请求
+    await Axios.patch(`/problem/data/${id}/`, {
+      delete_cases: allCaseNames,
+      test_case_config: [],
+      subcheck_config: [],
+      use_spj: data.value.use_spj,
+      use_subcheck: false,
+      spj_source: data.value.spj_source || '',
+      spj_mode: data.value.spj_mode || 'default',
+      allow_download: data.value.allow_download,
+    });
+    
+    message.success('所有测试数据已删除');
+    init(); // 重新加载数据
+  } catch (err) {
+    console.error('Delete all error:', err);
+    message.error('删除失败：' + (err.detail || err.message || '未知错误'));
+  } finally {
+    deletingAll.value = false;
+  }
 };
 init();
 
@@ -609,23 +689,33 @@ const columns = [
 
 <template>
   <n-space vertical size="large">
-    <n-space>
-      <n-checkbox
-        v-model:checked="data.use_subcheck"
-        @update:checked="useSubcheck"
-        :disabled="data.use_spj"
+    <n-space justify="space-between">
+      <n-space>
+        <n-checkbox
+          v-model:checked="data.use_subcheck"
+          @update:checked="useSubcheck"
+          :disabled="data.use_spj"
+        >
+          捆绑测试
+        </n-checkbox>
+        <n-checkbox v-model:checked="data.use_spj" :disabled="data.use_subcheck">
+          Special Judge
+        </n-checkbox>
+        <n-checkbox
+          v-model:checked="data.allow_download"
+          @update:checked="() => (data.use_subcheck = false)"
+        >
+          允许下载测试点
+        </n-checkbox>
+      </n-space>
+      <n-button 
+        type="primary" 
+        @click="downloadAllData" 
+        :loading="downloadingAll"
+        :disabled="!data.test_case_config || data.test_case_config.length === 0"
       >
-        捆绑测试
-      </n-checkbox>
-      <n-checkbox v-model:checked="data.use_spj" :disabled="data.use_subcheck">
-        Special Judge
-      </n-checkbox>
-      <n-checkbox
-        v-model:checked="data.allow_download"
-        @update:checked="() => (data.use_subcheck = false)"
-      >
-        允许下载测试点
-      </n-checkbox>
+        📦 批量下载所有数据
+      </n-button>
     </n-space>
     <n-data-table
       :bordered="false"
@@ -720,6 +810,15 @@ const columns = [
       保存
     </n-button>
     <n-button size="large" @click="init"> 重置 </n-button>
+    <n-button 
+      size="large" 
+      type="error" 
+      @click="deleteAllData" 
+      :loading="deletingAll"
+      :disabled="!data.test_case_config || data.test_case_config.length === 0"
+    >
+      删除所有数据
+    </n-button>
   </n-space>
 
   <n-modal v-model:show="showModal">

@@ -4,9 +4,9 @@
 echo "Building backend from local source..."
 
 # Build the image
-docker compose build backend
+docker compose -f docker-compose.yml build backend
 
 echo "Build complete! Restarting backend container..."
-docker compose restart backend
+docker compose -f docker-compose.yml up -d --build --force-recreate backend
 
 echo "Done! Backend has been updated."
