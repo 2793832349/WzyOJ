@@ -17,6 +17,7 @@ urlpatterns = [
     path('user/', include('oj_user.urls')),
     path('class/', include('oj_class.urls')),
     path('course/', include('oj_course.urls')),
+    path('book/', include('oj_book.urls')),
     path('site_settings/', SiteSettingsView.as_view()),
     path('admin/', admin.site.urls),
 ]
