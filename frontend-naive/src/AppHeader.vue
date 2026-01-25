@@ -187,6 +187,17 @@ const handleUserOptionSelect = key => {
           班级
         </n-button>
       </router-link>
+      <router-link :to="{ name: 'book_list' }" v-if="store.getters.loggedIn">
+        <n-button
+          :tertiary="route.meta.cate === 'book'"
+          :quaternary="route.meta.cate !== 'book'"
+        >
+          <template #icon>
+            <n-icon :component="BookOutline" />
+          </template>
+          电子书
+        </n-button>
+      </router-link>
       <router-link :to="{ name: 'submission_list' }">
         <n-button
           :tertiary="route.meta.cate === 'submission'"

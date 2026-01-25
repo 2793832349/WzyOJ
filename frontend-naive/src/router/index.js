@@ -395,6 +395,72 @@ const routes = [
     },
   },
   {
+    path: '/book/',
+    name: 'book_list',
+    component: () => import('@/pages/book/index.vue'),
+    meta: {
+      title: '电子书',
+      cate: 'book',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/book/create/',
+    name: 'book_create',
+    component: () => import('@/pages/book/edit.vue'),
+    meta: {
+      title: '创建电子书',
+      cate: 'book',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'class',
+    },
+  },
+  {
+    path: '/book/:id/edit/',
+    name: 'book_edit',
+    component: () => import('@/pages/book/edit.vue'),
+    meta: {
+      title: '编辑电子书 #{id}',
+      cate: 'book',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'class',
+    },
+  },
+  {
+    path: '/book/:id/chapter/:chapterId/',
+    name: 'book_chapter_edit',
+    component: () => import('@/pages/book/chapter/_id.vue'),
+    meta: {
+      title: '编辑章节',
+      cate: 'book',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'class',
+    },
+  },
+  {
+    path: '/book/:id/',
+    name: 'book_detail',
+    component: () => import('@/pages/book/_id.vue'),
+    meta: {
+      title: '电子书 #{id}',
+      cate: 'book',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/book/section/:id/',
+    name: 'book_section',
+    component: () => import('@/pages/book/section/_id.vue'),
+    meta: {
+      title: '阅读',
+      cate: 'book',
+      requiredLogin: true,
+    },
+  },
+  {
     path: '/tools/excalidraw/',
     name: 'tools_excalidraw',
     component: () => import('@/pages/tools/excalidraw.vue'),

@@ -114,6 +114,7 @@ LOCAL_APPS = [
     'oj_class.apps.OjClassConfig',
     'oj_course.apps.CourseConfig',
     'oj_live.apps.LiveConfig',
+    'oj_book.apps.OjBookConfig',
 ]
 
 INSTALLED_APPS = VENDOR_APPS + LOCAL_APPS

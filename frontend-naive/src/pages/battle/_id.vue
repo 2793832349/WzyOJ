@@ -20,6 +20,7 @@ const room = ref(null);
 const events = ref([]);
 const currentUserId = ref(null);
 const firstAcUserId = ref(null);
+const currentUserAc = ref(false);
 
 const language = ref('cpp');
 const source = ref('');
@@ -129,8 +130,15 @@ const connectWs = () => {
       if (data.type === 'participant_joined' && data.room) room.value = data.room;
       if (data.type === 'first_ac') {
         firstAcUserId.value = data.user_id;
+        if (data.user_id === currentUserId.value) {
+          currentUserAc.value = true;
+        }
         loadRoom();
         showFirstAcModal(data);
+      }
+      // 检查 submission_update 事件，如果当前用户 AC 了也设置标志
+      if (data.type === 'submission_update' && data.user_id === currentUserId.value && data.status === 'accepted') {
+        currentUserAc.value = true;
       }
       if (data.type === 'room_finished') {
         loadRoom();
@@ -325,13 +333,13 @@ onBeforeUnmount(() => {
                 <strong>题目描述</strong>
                 <MdEditor :content="problemDetail.description" previewOnly />
               </div>
-              <div v-if="problemDetail.input_description">
+              <div v-if="problemDetail.input_format">
                 <strong>输入格式</strong>
-                <MdEditor :content="problemDetail.input_description" previewOnly />
+                <MdEditor :content="problemDetail.input_format" previewOnly />
               </div>
-              <div v-if="problemDetail.output_description">
+              <div v-if="problemDetail.output_format">
                 <strong>输出格式</strong>
-                <MdEditor :content="problemDetail.output_description" previewOnly />
+                <MdEditor :content="problemDetail.output_format" previewOnly />
               </div>
             </div>
             
@@ -436,9 +444,9 @@ onBeforeUnmount(() => {
               type="primary" 
               :loading="submitting" 
               @click="submit"
-              :disabled="room && room.status !== 'running'"
+              :disabled="(room && room.status !== 'running') || currentUserAc"
             >
-              {{ room && room.status !== 'running' ? '本局对战已结束' : '提交代码' }}
+              {{ room && room.status !== 'running' ? '本局对战已结束' : (currentUserAc ? '你已通过本题' : '提交代码') }}
             </n-button>
           </n-space>
         </n-card>

@@ -5,12 +5,18 @@
         <h1 style="margin: 0">{{ classInfo.title }}</h1>
         <p style="margin: 8px 0 0 0; color: #666">{{ classInfo.description }}</p>
       </div>
-      <n-space v-if="isTeacher">
-        <n-button type="primary" @click="startLive" :loading="startingLive">
+      <n-space>
+        <n-button v-if="isTeacher" type="primary" @click="startLive" :loading="startingLive">
           <template #icon>
             <n-icon><VideocamOutline /></n-icon>
           </template>
-          开启直播
+          开启直播课堂
+        </n-button>
+        <n-button v-else type="primary" @click="enterLive">
+          <template #icon>
+            <n-icon><VideocamOutline /></n-icon>
+          </template>
+          进入直播课堂
         </n-button>
       </n-space>
     </n-space>
@@ -688,7 +694,7 @@ const isTeacher = computed(() => {
   return classInfo.value && classInfo.value.user_role === 'teacher';
 });
 
-// 开启直播
+// 开启直播（教师）
 const startLive = async () => {
   startingLive.value = true;
   try {
@@ -731,6 +737,37 @@ const startLive = async () => {
     message.error(err.response?.data?.error || '开启直播失败');
   } finally {
     startingLive.value = false;
+  }
+};
+
+// 进入直播课堂（学生）
+const enterLive = async () => {
+  try {
+    // 检查是否有活跃的直播
+    const checkRes = await Axios.get('/live/session/active/', {
+      params: {
+        content_type: 'class',
+        object_id: classId,
+      },
+    });
+    
+    if (checkRes.session) {
+      // 有活跃的直播，进入
+      router.push({
+        name: 'course_live',
+        params: { id: classId },
+        query: {
+          session_id: checkRes.session.id,
+          content_type: 'class',
+          object_id: classId,
+        },
+      });
+    } else {
+      message.warning('当前没有进行中的直播课堂');
+    }
+  } catch (err) {
+    console.error('Enter live error:', err);
+    message.error(err.response?.data?.error || '进入直播课堂失败');
   }
 };
 

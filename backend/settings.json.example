@@ -26,7 +26,7 @@
         "serverKey": "",
         "backendUrl": ""
     },
-    "defaultSubmitLanguage": "python3",
+    "defaultSubmitLanguage": "cpp",
     "forceHideSubmissions": false,
     "enableDiscussion": true
 }
