@@ -50,8 +50,11 @@ frontend-naive/.nuxt/
 *.tmp
 *.bak
 *.cache
+<<<<<<< HEAD
 
 .vs/
 .codeium/
 *.vsidx
 .bash_history
+=======
+>>>>>>> 34d8e6ab125ade1c297b3322f90b5ce395baa141

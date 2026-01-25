@@ -17,7 +17,10 @@ urlpatterns = [
     path('user/', include('oj_user.urls')),
     path('class/', include('oj_class.urls')),
     path('course/', include('oj_course.urls')),
+<<<<<<< HEAD
     path('course_media/', include('course_media.urls')),  # <- ÒÑÌí¼Ó
+=======
+>>>>>>> 34d8e6ab125ade1c297b3322f90b5ce395baa141
     path('book/', include('oj_book.urls')),
     path('site_settings/', SiteSettingsView.as_view()),
     path('admin/', admin.site.urls),

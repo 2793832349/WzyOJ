@@ -280,6 +280,7 @@ const routes = [
     },
   },
   {
+<<<<<<< HEAD
     path: '/course/:id/recorded/',
     name: 'course_recorded',
     component: () => import('@/pages/course/recorded.vue'),
@@ -290,6 +291,8 @@ const routes = [
     },
   },
   {
+=======
+>>>>>>> 34d8e6ab125ade1c297b3322f90b5ce395baa141
     path: '/course/create/',
     name: 'course_create',
     component: () => import('@/pages/course/edit.vue'),
