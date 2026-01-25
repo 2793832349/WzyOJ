@@ -1,42 +1,15 @@
-# HTTP server - redirect to HTTPS
 server {
     listen 80;
     server_name ${NGINX_HOST};
     server_tokens off;
-    
-    # Allow Let's Encrypt ACME challenge
-    location /.well-known/acme-challenge/ {
-        root /var/www/certbot;
-    }
-    
-    # Redirect all other HTTP traffic to HTTPS
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
 
-# HTTPS server
-server {
-    listen 443 ssl http2;
-    server_name ${NGINX_HOST};
-    server_tokens off;
-    
-    # SSL certificate configuration
-    ssl_certificate /etc/letsencrypt/live/${NGINX_HOST}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/${NGINX_HOST}/privkey.pem;
-    
-    # SSL security settings
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384';
-    ssl_prefer_server_ciphers off;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    
+    # 静态资源路径 (媒体文件)
     location /media/ {
         alias /usr/share/nginx/media/;
         add_header Cache-Control "public, max-age=86400";
     }
-    
+
+    # 前端静态文件
     location / {
         root /usr/share/nginx/html;
         try_files $uri $uri/ /index.html;
@@ -45,19 +18,20 @@ server {
         add_header Pragma "no-cache" always;
         add_header Expires "0" always;
         
-        # Cache control for HTML files - no cache
+        # HTML 文件不缓存
         location ~* \.html$ {
             add_header Cache-Control "no-cache, no-store, must-revalidate";
             add_header Pragma "no-cache";
             add_header Expires "0";
         }
         
-        # Cache control for static assets with hash - long cache
+        # 带有哈希值的静态资源长缓存
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
             add_header Cache-Control "public, max-age=31536000, immutable";
         }
     }
 
+    # WebSocket 代理
     location /ws/ {
         proxy_pass http://${BACKEND_HOST}:8081;
         proxy_http_version 1.1;
@@ -70,12 +44,13 @@ server {
         proxy_read_timeout 3600;
     }
     
+    # 后端 API 代理
     location /api {
         client_max_body_size 1024m;
-        include     uwsgi_params;
-        uwsgi_pass  ${BACKEND_HOST}:${BACKEND_PORT};
-        uwsgi_param UWSGI_SCHEME $scheme;
-        uwsgi_param HTTP_X_FORWARDED_PROTO $scheme;
-        rewrite     ^/api/(.*)$  /$1  break;
+        include      uwsgi_params;
+        uwsgi_pass   ${BACKEND_HOST}:${BACKEND_PORT};
+        uwsgi_param  UWSGI_SCHEME $scheme;
+        uwsgi_param  HTTP_X_FORWARDED_PROTO $scheme;
+        rewrite      ^/api/(.*)$  /$1  break;
     }
 }
