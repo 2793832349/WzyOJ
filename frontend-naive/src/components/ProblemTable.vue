@@ -1,5 +1,5 @@
 <script setup>
-import { h } from 'vue';
+import { computed, h } from 'vue';
 import router from '@/router';
 import store from '@/store';
 import { NButton, NIcon } from 'naive-ui';
@@ -7,7 +7,7 @@ import { CheckCircleTwotone } from '@vicons/antd';
 import { difficulty, difficultyColor } from '@/plugins/consts';
 import { RouterLink } from 'vue-router';
 
-defineProps({
+const props = defineProps({
   data: {
     type: Array,
     default: [],
@@ -16,32 +16,41 @@ defineProps({
     type: Boolean,
     default: false,
   },
+  showSolved: {
+    type: Boolean,
+    default: true,
+  },
+  showSubmitStats: {
+    type: Boolean,
+    default: true,
+  },
 });
 
-const columns = [
-  {
-    title: '已通过',
-    render(row) {
-      return h(
-        NIcon,
-        {
-          style: 'margin-top: 5px; margin-left: 5px',
-          size: '20',
-          color: '#27AE60',
-          onClick() {
-            if (row.solved) {
-              router.push({
-                name: 'submission_index',
-                query: { user__username: store.state.user.username },
-              });
-            }
-          },
+const solvedColumn = {
+  title: '已通过',
+  render(row) {
+    return h(
+      NIcon,
+      {
+        style: 'margin-top: 5px; margin-left: 5px',
+        size: '20',
+        color: '#27AE60',
+        onClick() {
+          if (row.solved) {
+            router.push({
+              name: 'submission_index',
+              query: { user__username: store.state.user.username },
+            });
+          }
         },
-        { default: () => (row.solved ? h(CheckCircleTwotone) : '') }
-      );
-    },
-    width: 100,
+      },
+      { default: () => (row.solved ? h(CheckCircleTwotone) : '') }
+    );
   },
+  width: 100,
+};
+
+const baseColumns = [
   {
     title: 'ID',
     render(row) {
@@ -102,13 +111,22 @@ const columns = [
       );
     },
   },
-  {
-    title: '通过 / 提交次数',
-    render(row) {
-      return `${row.accepted_count} / ${row.submission_count}`;
-    },
-  },
 ];
+
+const submitStatsColumn = {
+  title: '通过 / 提交次数',
+  render(row) {
+    return `${row.accepted_count} / ${row.submission_count}`;
+  },
+};
+
+const columns = computed(() => {
+  const cols = [];
+  if (props.showSolved) cols.push(solvedColumn);
+  cols.push(...baseColumns);
+  if (props.showSubmitStats) cols.push(submitStatsColumn);
+  return cols;
+});
 </script>
 
 <template>

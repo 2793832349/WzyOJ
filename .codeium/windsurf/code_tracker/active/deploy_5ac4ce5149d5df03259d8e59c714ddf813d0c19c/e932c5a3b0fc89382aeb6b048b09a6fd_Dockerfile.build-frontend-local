@@ -1,16 +1,0 @@
-˜FROM node:18
-
-WORKDIR /root
-
-# Copy local frontend code
-COPY ../frontend-naive /root/frontend
-
-# Install dependencies
-RUN cd frontend && yarn install --registry=https://registry.npmmirror.com
-
-# Build the frontend
-RUN cd frontend && yarn build
-
-# Copy build output to mounted volume
-CMD ["sh", "-c", "rm -rf /root/frontend-dist/* && cp -r /root/frontend/dist/* /root/frontend-dist/ && echo 'BUILD SUCCESS'"]
-˜*cascade08"(5ac4ce5149d5df03259d8e59c714ddf813d0c19c2>file:///root/deploy/dockerfile/Dockerfile.build-frontend-local:file:///root/deploy

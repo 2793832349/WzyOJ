@@ -17,31 +17,25 @@ RUN buildDeps='software-properties-common git libtool cmake python3-dev python3-
     update-alternatives --install  /usr/bin/g++ g++ /usr/bin/g++-13 80 && \
     echo "STAGE 0 [\033[32mPASS\033[0m]" && \
     cd /tmp
-
 RUN if [ "$USE_MIRROR" = "true" ]; then \
     git clone https://ghproxy.com/https://github.com/genuine-oj/judger-core.git core; \
     else \
     git clone https://github.com/genuine-oj/judger-core.git core; \
     fi
-
 RUN cd core && \
     mkdir build && cd build && cmake .. && make && make install && cd ../wrapper && \
     python3 setup.py install && \
     echo "STAGE 1 [\033[32mPASS\033[0m]"
-
 RUN cd /
-
 RUN if [ "$USE_MIRROR" = "true" ]; then \
     git clone https://ghproxy.com/https://github.com/genuine-oj/judger.git code; \
     else \
     git clone https://github.com/genuine-oj/judger.git code; \
     fi
-
 RUN cd /code && bash deploy.sh
 
 RUN sed -i 's/-std=c++14/-std=c++23/g' /code/languages.py
 RUN sed -i 's/128 \* 1024 \* 1024/1024 * 1024 * 1024/g' /code/languages.py
-
 RUN python3 - <<'PY'
 from pathlib import Path
 import re
@@ -67,6 +61,247 @@ s = re.sub(
 p.write_text(s, encoding='utf-8')
 PY
 
+RUN cat > /code/server.py <<'PY'
+import asyncio
+import json
+import queue
+import time
+
+import websockets
+from multiprocessing import Manager, Process
+
+from judger import Judger, JudgeResult
+from exceptions import JudgeServiceError
+
+
+def judge(task, result_queue):
+    try:
+        Judger(
+            task_id=task['task_id'],
+            case_id=task['case_id'],
+            spj_id=task['spj_id'],
+            test_case_config=task['test_case_config'],
+            subcheck_config=task['subcheck_config'],
+            result_queue=result_queue,
+        ).judge(
+            task['code'],
+            task['lang'],
+            task['limit'],
+        )
+    except JudgeServiceError as e:
+        result_queue.put(
+            Judger.make_report(
+                status=JudgeResult.SYSTEM_ERROR,
+                score=0,
+                max_time=0,
+                max_memory=0,
+                log=str(e),
+                detail=[],
+            )
+        )
+    except Exception as e:
+        result_queue.put(
+            Judger.make_report(
+                status=JudgeResult.SYSTEM_ERROR,
+                score=0,
+                max_time=0,
+                max_memory=0,
+                log=f'Unexpected error: {type(e).__name__}: {e}',
+                detail=[],
+            )
+        )
+    finally:
+        result_queue.put(None)
+
+
+async def handler(websocket):
+    async for message in websocket:
+        try:
+            task = json.loads(message)
+        except json.decoder.JSONDecodeError:
+            print(f'Decode failed: {message}')
+            continue
+
+        try:
+            print(f"Task received: task_id={task.get('task_id')} case_id={task.get('case_id')} lang={task.get('lang')}")
+            manager = Manager()
+            result_queue = manager.Queue()
+            loop = asyncio.get_running_loop()
+
+            proc = Process(target=judge, args=(task, result_queue), daemon=False)
+            proc.start()
+        except Exception as e:
+            try:
+                await websocket.send(
+                    json.dumps(
+                        Judger.make_report(
+                            status=JudgeResult.SYSTEM_ERROR,
+                            score=0,
+                            max_time=0,
+                            max_memory=0,
+                            log=f'Judge server init error: {type(e).__name__}: {e}',
+                            detail=[],
+                        )
+                    )
+                )
+            except Exception:
+                pass
+            continue
+
+        start = time.monotonic()
+        timeout = float(task.get('timeout', 0) or 0)
+        if timeout <= 0:
+            timeout = 300.0
+
+        while True:
+            if time.monotonic() - start > timeout:
+                try:
+                    proc.terminate()
+                    proc.join(timeout=1)
+                except Exception:
+                    pass
+                data = json.dumps(
+                    Judger.make_report(
+                        status=JudgeResult.SYSTEM_ERROR,
+                        score=0,
+                        max_time=0,
+                        max_memory=0,
+                        log='Judge server task timeout',
+                        detail=[],
+                    )
+                )
+                await websocket.send(data)
+                break
+
+            try:
+                item = await loop.run_in_executor(None, lambda: result_queue.get(timeout=1))
+            except queue.Empty:
+                if not proc.is_alive():
+                    data = json.dumps(
+                        Judger.make_report(
+                            status=JudgeResult.SYSTEM_ERROR,
+                            score=0,
+                            max_time=0,
+                            max_memory=0,
+                            log='Judge worker exited unexpectedly',
+                            detail=[],
+                        )
+                    )
+                    await websocket.send(data)
+                    break
+                continue
+
+            if item is None:
+                break
+            await websocket.send(json.dumps(item))
+
+        try:
+            if proc.is_alive():
+                proc.terminate()
+                proc.join(timeout=1)
+        finally:
+            try:
+                manager.shutdown()
+            except Exception:
+                pass
+
+
+async def main():
+    loop = asyncio.get_running_loop()
+    stop = loop.create_future()
+
+    print('Listening on :8080')
+    async with websockets.serve(handler, '', 8080):
+        await stop
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
+PY
+
+RUN python3 - <<'PY'
+from pathlib import Path
+import re
+
+p = Path('/code/judger.py')
+s = p.read_text(encoding='utf-8', errors='replace')
+
+# SPJ_DIR is mounted read-only in production; don't try to cache compiled checker there.
+s = s.replace(
+    "and not Path(self.spj_dir / spj_compile_config['exe_name']).exists():",
+    "and not Path(working_dir / spj_compile_config['exe_name']).exists():",
+)
+
+lines = s.splitlines(True)
+out = []
+i = 0
+replaced = False
+while i < len(lines):
+    if i + 2 < len(lines) and 'shutil.copyfile(' in lines[i] and "working_dir / spj_compile_config['exe_name']" in lines[i + 1] and 'checker_exe' in lines[i + 2]:
+        indent = re.match(r"\s*", lines[i]).group(0)
+        out.append(f"{indent}try:\n")
+        out.append(f"{indent}    shutil.copyfile(\n")
+        out.append(f"{indent}        working_dir / spj_compile_config['exe_name'],\n")
+        out.append(f"{indent}        checker_exe)\n")
+        out.append(f"{indent}except OSError:\n")
+        out.append(f"{indent}    pass\n")
+        i += 3
+        replaced = True
+        continue
+    out.append(lines[i])
+    i += 1
+
+if not replaced:
+    raise RuntimeError('Failed to patch SPJ checker cache write in /code/judger.py')
+
+p.write_text(''.join(out), encoding='utf-8')
+PY
+
+RUN python3 -m py_compile /code/judger.py /code/server.py
+
+RUN python3 - <<'PY'
+from pathlib import Path
+import re
+
+p = Path('/code/languages.py')
+s = p.read_text(encoding='utf-8')
+
+# SPJ compile can be memory-heavy with testlib.h; relax memory limit.
+s = re.sub(
+    r"('spj':\s*\{\s*'compile':\s*\{.*?'max_memory':\s*)\n\s*[^,]+,",
+    r"\1\n            8 * 1024 * 1024 * 1024,",
+    s,
+    flags=re.S,
+    count=1,
+)
+
+s = re.sub(
+    r"('spj':\s*\{\s*'compile':\s*\{.*?'max_cpu_time':\s*)\n\s*\d+,",
+    r"\1\n            60000,",
+    s,
+    flags=re.S,
+    count=1,
+)
+
+s = re.sub(
+    r"('spj':\s*\{\s*'compile':\s*\{.*?'max_real_time':\s*)\n\s*\d+,",
+    r"\1\n            120000,",
+    s,
+    flags=re.S,
+    count=1,
+)
+
+s = re.sub(
+    r"('spj':\s*\{\s*'compile':\s*\{.*?'compile_command':\s*)\n\s*'/usr/bin/g\+\+ -DONLINE_JUDGE -O2 ",
+    r"\1\n            '/usr/bin/g++ -DONLINE_JUDGE -O2 ",
+    s,
+    flags=re.S,
+    count=1,
+)
+
+p.write_text(s, encoding='utf-8')
+PY
+
 COPY ./config/judger-config.py /code/config.py
 
 RUN if [ "$USE_MIRROR" = "true" ]; then \
@@ -74,7 +309,6 @@ RUN if [ "$USE_MIRROR" = "true" ]; then \
     else \
     pip3 install -I --no-cache-dir -r /code/requirements.txt; \
     fi
-
 RUN echo "STAGE 2 [\033[32mPASS\033[0m]" && \
     apt-get purge -y --auto-remove $buildDeps && \
     apt-get clean && rm -rf /var/lib/apt/lists/* && \

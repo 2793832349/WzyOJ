@@ -6,26 +6,19 @@ export const Axios = axios.create({
   baseURL: '/api',
 });
 
-// Debug: Log the baseURL
-console.log('Axios instance created with baseURL:', Axios.defaults.baseURL);
-
 // Add request interceptor to log all requests and fix URL
 Axios.interceptors.request.use(
   config => {
-    console.log('Axios request interceptor BEFORE:', {
-      method: config.method,
-      url: config.url,
-      baseURL: config.baseURL,
-    });
-    
     // If URL doesn't start with /, manually prepend baseURL
     if (config.url && !config.url.startsWith('/') && !config.url.startsWith('http')) {
       config.url = config.baseURL + '/' + config.url;
       config.baseURL = undefined; // Clear baseURL to prevent double prepending
-      console.log('Axios request interceptor AFTER fix:', {
-        url: config.url,
-        baseURL: config.baseURL,
-      });
+    }
+    
+    // Add authentication token if available
+    const token = store.state.user?.token;
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
     
     return config;
@@ -75,9 +68,13 @@ Axios.interceptors.response.use(
           return Promise.reject(error.response);
         }
       }
-      if (error.response.data.message) {
-        window.$message.error(error.response.data.message);
-        return Promise.reject(error.response.data.message);
+      const reason =
+        error.response.data?.message ??
+        error.response.data?.detail ??
+        error.response.data?.error;
+      if (reason) {
+        window.$message.error(reason);
+        return Promise.reject(reason);
       }
       window.$message.error('身份校验失败');
       return Promise.reject('身份校验失败');

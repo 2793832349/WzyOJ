@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import Axios from '@/plugins/axios';
 import store from '@/store';
 import { useRoute, onBeforeRouteLeave } from 'vue-router';
@@ -7,6 +7,7 @@ import { formatTime, formatSize } from '@/plugins/utils';
 import { judgeStatus, noTime, noMemory } from '@/plugins/consts';
 import CodeWithCard from '@/components/CodeWithCard.vue';
 import SubmissionTable from '@/components/SubmissionTable.vue';
+import acceptedSoundUrl from './sound.wav';
 
 const route = useRoute(),
   message = useMessage();
@@ -19,6 +20,56 @@ const id = route.params.id,
   showingSubchecks = ref([]);
 
 let interval;
+
+let acceptedAudio;
+const ensureAcceptedAudio = () => {
+  if (!acceptedAudio) {
+    acceptedAudio = new Audio(acceptedSoundUrl);
+    acceptedAudio.preload = 'auto';
+  }
+  return acceptedAudio;
+};
+
+const playAcceptedSound = async () => {
+  const audio = ensureAcceptedAudio();
+  try {
+    audio.currentTime = 0;
+  } catch {
+    // ignore
+  }
+  try {
+    await audio.play();
+  } catch {
+    // ignore autoplay restrictions
+  }
+};
+
+const unlockAudioOnce = () => {
+  const audio = ensureAcceptedAudio();
+  try {
+    audio.muted = true;
+    const p = audio.play();
+    if (p && typeof p.then === 'function') {
+      p.then(() => {
+        audio.pause();
+        audio.currentTime = 0;
+        audio.muted = false;
+      }).catch(() => {
+        audio.muted = false;
+      });
+    } else {
+      audio.pause();
+      audio.currentTime = 0;
+      audio.muted = false;
+    }
+  } catch {
+    // ignore
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('pointerdown', unlockAudioOnce, { once: true });
+});
 
 const getStatus = async () => {
   const res = await Axios.get(`/submission/${id}/status/`);
@@ -50,6 +101,7 @@ const loadData = () => {
     }
     data.value = res;
     if (res.status <= -3) {
+      if (interval) clearInterval(interval);
       interval = setInterval(getStatus, 1000);
     }
   });
@@ -57,8 +109,20 @@ const loadData = () => {
 
 loadData();
 
+watch(
+  () => data.value.status,
+  (next, prev) => {
+    if (prev === undefined || next === undefined) return;
+    if (prev !== judgeStatus.ACCEPTED && next === judgeStatus.ACCEPTED) {
+      playAcceptedSound();
+    }
+  }
+);
+
 onBeforeRouteLeave((to, from, next) => {
   clearInterval(interval);
+  window.removeEventListener('pointerdown', unlockAudioOnce);
+  acceptedAudio = undefined;
   next();
 });
 
@@ -91,14 +155,40 @@ const copy = (text, event = undefined) => {
   document.body.removeChild(input);
   message.success('复制成功');
 };
+
+const rejudge = () => {
+  Axios.post(`/submission/${id}/rejudge/`).then(() => {
+    message.success('已开始重新评测');
+    loadData();
+  });
+};
 </script>
 
 <template>
-  <h1>提交详情</h1>
+  <div
+    style="
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    "
+  >
+    <h1>提交详情</h1>
+    <n-button
+      type="warning"
+      v-if="
+        store.state.user.permissions &&
+        store.state.user.permissions.includes('submission')
+      "
+      @click="rejudge"
+    >
+      重新评测
+    </n-button>
+  </div>
   <n-layout-content v-if="data.id">
     <n-spin :show="data.status <= -3">
       <template #description>正在评测中...</template>
-      <SubmissionTable :data="[data]" />
+      <SubmissionTable :data="[data]" @refresh="loadData" />
     </n-spin>
   </n-layout-content>
   <n-collapse

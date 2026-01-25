@@ -32,13 +32,15 @@ const getRankingData = (force_update = false) => {
 
 const loadData = () => {
   Axios.get(`/contest/${id}/`).then(res => {
-    res.start_time = (res.start_time && Number(new Date(res.start_time))) || 0;
-    res.end_time = (res.end_time && Number(new Date(res.end_time))) || 0;
+    res.start_time = res.start_time ? Number(new Date(res.start_time)) : null;
+    res.end_time = res.end_time ? Number(new Date(res.end_time)) : null;
     contestData.value = res;
     
     // 题单模式：直接加载排行榜
     if (res.problem_list_mode) {
-      getRankingData();
+      if (res.joined || store.state.user.permissions.includes('contest')) {
+        getRankingData();
+      }
     }
     // 比赛模式：按时间加载排行榜
     else if (res.start_time <= Date.now()) {
@@ -123,7 +125,10 @@ const signUp = () => {
                 type="primary"
                 @click="signUp"
                 :disabled="
-                  contestData.joined || Date.now() > contestData.end_time
+                  contestData.joined ||
+                  (!contestData.problem_list_mode &&
+                    contestData.end_time &&
+                    Date.now() > contestData.end_time)
                 "
               >
                 {{ contestData.joined ? '已加入' : '报名' }}

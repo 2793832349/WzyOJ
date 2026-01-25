@@ -2,8 +2,10 @@ import asyncio
 import websockets
 import signal
 import json
+import queue
+import time
 
-from multiprocessing import Manager
+from multiprocessing import Manager, Process
 
 from judger import Judger, JudgeResult
 from exceptions import JudgeServiceError
@@ -29,7 +31,16 @@ def judge(task, result_queue):
                                max_memory=0,
                                log=str(e),
                                detail=[]))
-    result_queue.put(None)
+    except Exception as e:
+        result_queue.put(
+            Judger.make_report(status=JudgeResult.SYSTEM_ERROR,
+                               score=0,
+                               max_time=0,
+                               max_memory=0,
+                               log=f'Unexpected error: {type(e).__name__}: {e}',
+                               detail=[]))
+    finally:
+        result_queue.put(None)
 
 
 async def handler(websocket):
@@ -39,15 +50,64 @@ async def handler(websocket):
         except json.decoder.JSONDecodeError:
             print(f'Decode failed: {message}')
             continue
-        result_queue = Manager().Queue()
+        manager = Manager()
+        result_queue = manager.Queue()
         loop = asyncio.get_event_loop()
-        judger = loop.run_in_executor(None, judge, task, result_queue)
+
+        proc = Process(target=judge, args=(task, result_queue), daemon=False)
+        proc.start()
+        start = time.monotonic()
+        timeout = float(task.get('timeout', 0) or 0)
+        if timeout <= 0:
+            timeout = 300.0
+
         while True:
-            item = await loop.run_in_executor(None, result_queue.get)
+            if time.monotonic() - start > timeout:
+                try:
+                    proc.terminate()
+                    proc.join(timeout=1)
+                except Exception:
+                    pass
+                data = json.dumps(
+                    Judger.make_report(status=JudgeResult.SYSTEM_ERROR,
+                                       score=0,
+                                       max_time=0,
+                                       max_memory=0,
+                                       log='Judge server task timeout',
+                                       detail=[]))
+                await websocket.send(data)
+                break
+
+            try:
+                item = await loop.run_in_executor(
+                    None, lambda: result_queue.get(timeout=1))
+            except queue.Empty:
+                if not proc.is_alive():
+                    data = json.dumps(
+                        Judger.make_report(status=JudgeResult.SYSTEM_ERROR,
+                                           score=0,
+                                           max_time=0,
+                                           max_memory=0,
+                                           log='Judge worker exited unexpectedly',
+                                           detail=[]))
+                    await websocket.send(data)
+                    break
+                continue
+
             if item is None:
                 break
             data = json.dumps(item)
             await websocket.send(data)
+
+        try:
+            if proc.is_alive():
+                proc.terminate()
+                proc.join(timeout=1)
+        finally:
+            try:
+                manager.shutdown()
+            except Exception:
+                pass
 
 
 async def main():

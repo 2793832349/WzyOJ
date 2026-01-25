@@ -158,6 +158,7 @@ const permissionOptions = [
   { label: '评测管理', value: 'submission' },
   { label: '讨论管理', value: 'discussion' },
   { label: '比赛管理', value: 'contest' },
+  { label: '班级管理', value: 'class' },
 ];
 export {
   judgeStatus,

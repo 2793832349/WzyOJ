@@ -1,25 +1,0 @@
-êFROM python:3.10-bullseye
-
-ARG USE_MIRROR
-
-RUN if [ "$USE_MIRROR" = "true" ]; then \
-    sed -E -i -e 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list; \
-    fi
-RUN apt-get update && apt-get install -y supervisor && cd /srv
-COPY ./backend /srv/server
-RUN cd /srv/server && if [ "$USE_MIRROR" = "true" ]; then \
-    pip3 install -r requirements.txt --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ && pip3 install psycopg2 uwsgi --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/; \
-    else \
-    pip3 install -r requirements.txt --no-cache-dir && pip3 install psycopg2 uwsgi --no-cache-dir; \
-    fi
-RUN mkdir -p /data/problem_files /data/judge_data/submission /data/judge_data/test_data && apt-get purge -y --auto-remove git && apt-get clean && rm -rf /var/lib/apt/lists/*
-
-COPY ./deploy/config/backend-entrypoint.sh /srv/entrypoint.sh
-COPY ./deploy/config/uwsgi.ini ./deploy/config/supervisord.conf /srv/
-
-WORKDIR /srv
-
-EXPOSE 8080
-
-RUN chmod +x /srv/entrypoint.sh
-ENTRYPOINT ["/srv/entrypoint.sh"]∂ *cascade08∂Ω*cascade08ΩÙ *cascade08Ù˚*cascade08˚ç *cascade08çî*cascade08îê *cascade08"(5ac4ce5149d5df03259d8e59c714ddf813d0c19c21file:///root/deploy/dockerfile/Dockerfile.backend:file:///root/deploy

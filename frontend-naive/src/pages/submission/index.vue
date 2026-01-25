@@ -24,7 +24,7 @@ const writeSearchToQuery = _writeSearchToQuery(
   route
 );
 
-const handleQueryChange = () => {
+const handleQueryChange = (silent = false) => {
   if (route.name !== 'submission_list') return;
 
   for (const key in search.value) {
@@ -38,7 +38,7 @@ const handleQueryChange = () => {
     if (route.query[key]) pagination.value[key] = parseInt(route.query[key]);
   }
 
-  loading.value = true;
+  if (silent !== true) loading.value = true;
   Axios.get('/submission/', {
     params: {
       limit: pagination.value.pageSize,
@@ -99,7 +99,11 @@ handleQueryChange();
       </n-form>
     </n-layout-content>
     <n-layout-content>
-      <SubmissionTable :data="data" :loading="loading" />
+      <SubmissionTable
+        :data="data"
+        :loading="loading"
+        @refresh="handleQueryChange"
+      />
     </n-layout-content>
     <n-layout-content>
       <div style="margin-top: 30px; text-align: center">

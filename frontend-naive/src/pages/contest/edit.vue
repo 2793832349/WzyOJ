@@ -89,6 +89,8 @@ if (id) {
     }));
     res.start_time = (res.start_time && Number(new Date(res.start_time))) || 0;
     res.end_time = (res.end_time && Number(new Date(res.end_time))) || 0;
+    res.freeze_time =
+      (res.freeze_time && Number(new Date(res.freeze_time))) || null;
     contest_time_range.value = [res.start_time, res.end_time];
     res.users = res.users.map(item => item.id);
     contest.value = res;

@@ -1,3 +1,7 @@
+import subprocess
+import tempfile
+import os
+
 from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Q
@@ -9,16 +13,96 @@ from oj_backend.permissions import (Captcha, Granted,
                                     IsAuthenticatedAndReadOnly)
 from oj_contest.models import Contest
 from rest_framework import status
-from rest_framework.decorators import action
+from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
 from rest_framework.filters import OrderingFilter
 from rest_framework.mixins import CreateModelMixin, DestroyModelMixin
 from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from .models import StatusChoices, Submission
 from .serializers import SubmissionDetailSerializer, SubmissionSerializer
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def debug_run(request):
+    """
+    自测运行代码
+    """
+    language = request.data.get('language', 'cpp')
+    source = request.data.get('source', '')
+    input_data = request.data.get('input', '')
+    
+    if not source:
+        return Response({'error': '代码不能为空'}, status=400)
+    
+    # 限制代码长度
+    if len(source) > 65536:
+        return Response({'error': '代码过长'}, status=400)
+    
+    # 限制输入长度
+    if len(input_data) > 65536:
+        return Response({'error': '输入数据过长'}, status=400)
+    
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # 根据语言确定文件名和编译/运行命令
+            if language == 'cpp':
+                src_file = os.path.join(tmpdir, 'main.cpp')
+                exe_file = os.path.join(tmpdir, 'main')
+                with open(src_file, 'w') as f:
+                    f.write(source)
+                # 编译
+                compile_result = subprocess.run(
+                    ['g++', '-o', exe_file, src_file, '-O2', '-std=c++17'],
+                    capture_output=True, text=True, timeout=10
+                )
+                if compile_result.returncode != 0:
+                    return Response({'error': f'编译错误:\n{compile_result.stderr}'})
+                run_cmd = [exe_file]
+            elif language == 'c':
+                src_file = os.path.join(tmpdir, 'main.c')
+                exe_file = os.path.join(tmpdir, 'main')
+                with open(src_file, 'w') as f:
+                    f.write(source)
+                # 编译
+                compile_result = subprocess.run(
+                    ['gcc', '-o', exe_file, src_file, '-O2'],
+                    capture_output=True, text=True, timeout=10
+                )
+                if compile_result.returncode != 0:
+                    return Response({'error': f'编译错误:\n{compile_result.stderr}'})
+                run_cmd = [exe_file]
+            elif language == 'python3':
+                src_file = os.path.join(tmpdir, 'main.py')
+                with open(src_file, 'w') as f:
+                    f.write(source)
+                run_cmd = ['python3', src_file]
+            else:
+                return Response({'error': f'不支持的语言: {language}'}, status=400)
+            
+            # 运行
+            run_result = subprocess.run(
+                run_cmd,
+                input=input_data,
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=tmpdir
+            )
+            
+            output = run_result.stdout
+            if run_result.returncode != 0 and run_result.stderr:
+                output += f'\n[运行错误]\n{run_result.stderr}'
+            
+            return Response({'output': output})
+    except subprocess.TimeoutExpired:
+        return Response({'error': '运行超时 (5秒)'})
+    except Exception as e:
+        return Response({'error': f'运行失败: {str(e)}'}, status=500)
 
 
 class SubmissionPagination(LimitOffsetPagination):
@@ -75,6 +159,30 @@ class SubmissionViewSet(ReadOnlyModelViewSet, CreateModelMixin, DestroyModelMixi
         if self.action == 'list':
             return SubmissionSerializer
         return SubmissionDetailSerializer
+
+    def _oi_feedback_hidden(self, submission: Submission) -> bool:
+        perms = getattr(self.request.user, 'permissions', []) if self.request.user.is_authenticated else []
+        is_admin = any([
+            self.request.user.is_staff,
+            'submission' in perms,
+            'contest' in perms,
+            'problem' in perms,
+        ])
+        if is_admin:
+            return False
+
+        now = timezone.now()
+        return (
+            Contest.objects
+            .filter(
+                problems__id=submission.problem_id,
+                problem_list_mode=False,
+                rule_type='OI',
+            )
+            .filter(Q(start_time__isnull=True) | Q(start_time__lt=now))
+            .filter(Q(end_time__isnull=True) | Q(end_time__gt=now))
+            .exists()
+        )
     
     def create(self, request, *args, **kwargs):
         """创建提交，带频率限制"""
@@ -108,11 +216,47 @@ class SubmissionViewSet(ReadOnlyModelViewSet, CreateModelMixin, DestroyModelMixi
         return super().destroy(request, *args, **kwargs)
 
     @action(detail=True,
+            methods=['post'],
+            permission_classes=[IsAuthenticatedAndReadCreate],
+            url_path='rejudge')
+    def rejudge(self, request, pk=None):
+        submission = self.get_object()
+        if self.permission not in request.user.permissions:
+            return Response(
+                {'error': '只有管理员可以重新评测'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        submission.status = StatusChoices.PENDING
+        submission.score = 0
+        submission.execute_time = 0
+        submission.execute_memory = 0
+        submission.detail = []
+        submission.log = ''
+        submission.save()
+
+        from .tasks import judge
+        judge.delay(
+            submission.id, submission.problem.test_case.test_case_id,
+            submission.problem.test_case.spj_id
+            if submission.problem.test_case.use_spj else None,
+            submission.problem.test_case.test_case_config,
+            submission.problem.test_case.subcheck_config
+            if submission.problem.test_case.use_subcheck else None,
+            submission.language, submission.source, {
+                'max_cpu_time': submission.problem.time_limit,
+                'max_memory': submission.problem.memory_limit * 1024 * 1024,
+            })
+        return Response({'status': 'rejudging'})
+
+    @action(detail=True,
             methods=['get'],
             permission_classes=[IsAuthenticatedAndReadOnly],
             url_path='status')
     def get_status(self, request, pk=None):
         submission = self.get_object()
+        if self._oi_feedback_hidden(submission):
+            return Response({'status': StatusChoices.PENDING})
         return Response({'status': submission.status})
 
     @action(detail=True,
@@ -123,6 +267,12 @@ class SubmissionViewSet(ReadOnlyModelViewSet, CreateModelMixin, DestroyModelMixi
             url_name='Test Point Data')
     def test_point(self, request, name, *args, **kwargs):
         instance = self.get_object()
+
+        if self._oi_feedback_hidden(instance):
+            return HttpResponse(
+                'OI CONTEST HIDES JUDGING FEEDBACK DURING CONTEST WINDOW',
+                status=403,
+            )
 
         if not instance.allow_download:
             return HttpResponse(

@@ -1,7 +1,25 @@
 <template>
   <div v-if="classInfo">
-    <h1>{{ classInfo.title }}</h1>
-    <p>{{ classInfo.description }}</p>
+    <n-space justify="space-between" align="center" style="margin-bottom: 16px">
+      <div>
+        <h1 style="margin: 0">{{ classInfo.title }}</h1>
+        <p style="margin: 8px 0 0 0; color: #666">{{ classInfo.description }}</p>
+      </div>
+      <n-space>
+        <n-button v-if="isTeacher" type="primary" @click="startLive" :loading="startingLive">
+          <template #icon>
+            <n-icon><VideocamOutline /></n-icon>
+          </template>
+          开启直播课堂
+        </n-button>
+        <n-button v-else type="primary" @click="enterLive">
+          <template #icon>
+            <n-icon><VideocamOutline /></n-icon>
+          </template>
+          进入直播课堂
+        </n-button>
+      </n-space>
+    </n-space>
 
     <n-tabs type="line" animated>
       <!-- 作业列表 -->
@@ -198,7 +216,7 @@
             v-model:value="assignmentProblemSearchKeyword"
             placeholder="搜索题目标题..."
             clearable
-            @update:value="searchProblemsForAssignment"
+            @update:value="handleAssignmentProblemSearch"
           >
             <template #prefix>
               <n-icon :component="SearchIcon" />
@@ -206,9 +224,10 @@
           </n-input>
 
           <n-data-table
+            remote
             :columns="selectProblemColumns"
             :data="availableProblemsForAssignment"
-            :pagination="{ pageSize: 10 }"
+            :pagination="problemsForAssignmentPagination"
             :loading="loadingProblemsForAssignment"
             max-height="400"
           />
@@ -309,7 +328,7 @@
             v-model:value="problemSearchKeyword"
             placeholder="搜索题目标题..."
             clearable
-            @update:value="searchMainProblems"
+            @update:value="handleMainProblemSearch"
           >
             <template #prefix>
               <n-icon :component="SearchIcon" />
@@ -317,9 +336,10 @@
           </n-input>
 
           <n-data-table
+            remote
             :columns="mainProblemColumns"
             :data="mainProblems"
-            :pagination="{ pageSize: 10 }"
+            :pagination="mainProblemsPagination"
             :loading="loadingMainProblems"
             max-height="400"
           />
@@ -578,17 +598,19 @@
 
 <script setup>
 import { ref, computed, onMounted, h } from 'vue';
-import { useRoute } from 'vue-router';
-import { useMessage, NButton, NSpace, NTag, NTooltip, NRadioGroup, NRadio } from 'naive-ui';
-import { Search as SearchIcon } from '@vicons/ionicons5';
+import { useRoute, useRouter } from 'vue-router';
+import { useMessage, NButton, NSpace, NTag, NTooltip, NRadioGroup, NRadio, NIcon } from 'naive-ui';
+import { Search as SearchIcon, VideocamOutline } from '@vicons/ionicons5';
 import Axios from '@/plugins/axios';
 import { difficultyOptions, difficulty as difficultyMap, difficultyColor } from '@/plugins/consts';
 import store from '@/store';
 
 const route = useRoute();
+const router = useRouter();
 const message = useMessage();
 
 const classId = route.params.id;
+const startingLive = ref(false);
 const classInfo = ref(null);
 const assignments = ref([]);
 const problems = ref([]);
@@ -615,6 +637,14 @@ const loadingGrades = ref(false);
 // 搜索关键词
 const problemSearchKeyword = ref('');
 const assignmentProblemSearchKeyword = ref('');
+
+const mainProblemPage = ref(1);
+const mainProblemPageSize = ref(10);
+const mainProblemItemCount = ref(0);
+
+const assignmentProblemPage = ref(1);
+const assignmentProblemPageSize = ref(10);
+const assignmentProblemItemCount = ref(0);
 
 // 表单数据
 const newAssignment = ref({
@@ -663,6 +693,83 @@ const viewingProblem = ref(null);
 const isTeacher = computed(() => {
   return classInfo.value && classInfo.value.user_role === 'teacher';
 });
+
+// 开启直播（教师）
+const startLive = async () => {
+  startingLive.value = true;
+  try {
+    // 先检查是否有活跃的直播
+    const checkRes = await Axios.get('/live/session/active/', {
+      params: {
+        content_type: 'class',
+        object_id: classId,
+      },
+    });
+    
+    let sessionId;
+    if (checkRes.session) {
+      // 已有活跃的直播，直接进入
+      sessionId = checkRes.session.id;
+      message.info('已有进行中的直播，正在进入...');
+    } else {
+      // 创建新的直播
+      const res = await Axios.post('/live/session/start/', {
+        content_type: 'class',
+        object_id: classId,
+        title: `${classInfo.value.title} - 直播`,
+      });
+      sessionId = res.id;
+      message.success('直播已开启');
+    }
+    
+    // 跳转到直播页面
+    router.push({
+      name: 'course_live',
+      params: { id: classId },
+      query: {
+        session_id: sessionId,
+        content_type: 'class',
+        object_id: classId,
+      },
+    });
+  } catch (err) {
+    console.error('Start live error:', err);
+    message.error(err.response?.data?.error || '开启直播失败');
+  } finally {
+    startingLive.value = false;
+  }
+};
+
+// 进入直播课堂（学生）
+const enterLive = async () => {
+  try {
+    // 检查是否有活跃的直播
+    const checkRes = await Axios.get('/live/session/active/', {
+      params: {
+        content_type: 'class',
+        object_id: classId,
+      },
+    });
+    
+    if (checkRes.session) {
+      // 有活跃的直播，进入
+      router.push({
+        name: 'course_live',
+        params: { id: classId },
+        query: {
+          session_id: checkRes.session.id,
+          content_type: 'class',
+          object_id: classId,
+        },
+      });
+    } else {
+      message.warning('当前没有进行中的直播课堂');
+    }
+  } catch (err) {
+    console.error('Enter live error:', err);
+    message.error(err.response?.data?.error || '进入直播课堂失败');
+  }
+};
 
 // 格式化日期
 const formatDate = (dateString) => {
@@ -998,10 +1105,17 @@ const searchMainProblems = () => {
   if (problemSearchKeyword.value) {
     params.search = problemSearchKeyword.value;
   }
+  params.limit = mainProblemPageSize.value;
+  params.offset = (mainProblemPage.value - 1) * mainProblemPageSize.value;
   
   Axios.get('problem/', { params })
     .then(res => {
       mainProblems.value = res.results || res;
+      if (typeof res?.count === 'number') {
+        mainProblemItemCount.value = res.count;
+      } else {
+        mainProblemItemCount.value = Array.isArray(mainProblems.value) ? mainProblems.value.length : 0;
+      }
     })
     .catch(() => {
       message.error('搜索题目失败');
@@ -1011,9 +1125,35 @@ const searchMainProblems = () => {
     });
 };
 
+const handleMainProblemSearch = () => {
+  mainProblemPage.value = 1;
+  searchMainProblems();
+};
+
+const mainProblemsPagination = computed(() => {
+  return {
+    page: mainProblemPage.value,
+    pageSize: mainProblemPageSize.value,
+    itemCount: mainProblemItemCount.value,
+    showSizePicker: true,
+    pageSizes: [10, 20, 50, 100],
+    onChange: (page) => {
+      mainProblemPage.value = page;
+      searchMainProblems();
+    },
+    onUpdatePageSize: (size) => {
+      mainProblemPageSize.value = size;
+      mainProblemPage.value = 1;
+      searchMainProblems();
+    },
+  };
+});
+
 // 题目操作
 const openReferenceProblemModal = () => {
   showReferenceProblemModal.value = true;
+  problemSearchKeyword.value = '';
+  mainProblemPage.value = 1;
   searchMainProblems();
 };
 
@@ -1253,6 +1393,7 @@ const viewAssignmentGrades = (assignment) => {
 const openSelectProblemForAssignment = () => {
   showSelectProblemForAssignment.value = true;
   assignmentProblemSearchKeyword.value = '';
+  assignmentProblemPage.value = 1;
   // 立即加载题目列表
   searchProblemsForAssignment();
 };
@@ -1264,15 +1405,48 @@ const searchProblemsForAssignment = () => {
   if (assignmentProblemSearchKeyword.value) {
     params.search = assignmentProblemSearchKeyword.value;
   }
+  params.limit = assignmentProblemPageSize.value;
+  params.offset = (assignmentProblemPage.value - 1) * assignmentProblemPageSize.value;
   
   Axios.get('problem/', { params })
     .then((res) => {
       availableProblemsForAssignment.value = res.results || res;
+      if (typeof res?.count === 'number') {
+        assignmentProblemItemCount.value = res.count;
+      } else {
+        assignmentProblemItemCount.value = Array.isArray(availableProblemsForAssignment.value)
+          ? availableProblemsForAssignment.value.length
+          : 0;
+      }
     })
     .finally(() => {
       loadingProblemsForAssignment.value = false;
     });
 };
+
+const handleAssignmentProblemSearch = () => {
+  assignmentProblemPage.value = 1;
+  searchProblemsForAssignment();
+};
+
+const problemsForAssignmentPagination = computed(() => {
+  return {
+    page: assignmentProblemPage.value,
+    pageSize: assignmentProblemPageSize.value,
+    itemCount: assignmentProblemItemCount.value,
+    showSizePicker: true,
+    pageSizes: [10, 20, 50, 100],
+    onChange: (page) => {
+      assignmentProblemPage.value = page;
+      searchProblemsForAssignment();
+    },
+    onUpdatePageSize: (size) => {
+      assignmentProblemPageSize.value = size;
+      assignmentProblemPage.value = 1;
+      searchProblemsForAssignment();
+    },
+  };
+});
 
 const addProblemToAssignment = (problem) => {
   // 检查是否已添加

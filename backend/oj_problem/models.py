@@ -131,7 +131,7 @@ class TestCase(models.Model):
                                        default=list)
     use_subcheck = models.BooleanField(_('subcheck'), default=False)
     allow_download = models.BooleanField(_('allow download case data'),
-                                         default=True)
+                                         default=False)
 
     class Meta:
         verbose_name = _('testcase')

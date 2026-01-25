@@ -9,6 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "blockly": "^10.3.1",
+    "markdown-it-multimd-table": "^4.2.3",
+    "pdfjs-dist": "^3.11.174",
     "vue": "^3.2.37"
   },
   "devDependencies": {

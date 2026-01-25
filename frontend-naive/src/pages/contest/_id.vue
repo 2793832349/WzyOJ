@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import Axios from '@/plugins/axios';
 
 import router from '@/router';
@@ -15,12 +15,20 @@ const id = route.params.id,
   contestData = ref({ problems: [] }),
   mode = ref('比赛');
 
+const hideSolved = computed(() => {
+  if (store.state.user.permissions.includes('contest')) return false;
+  if (contestData.value.rule_type !== 'OI') return false;
+  const now = Date.now();
+  return contestData.value.start_time <= now && now <= contestData.value.end_time;
+});
+
 const rankingData = ref({}),
   loadingRanking = ref(false);
+const publicView = ref(false);
 const getRankingData = (force_update = false) => {
   loadingRanking.value = true;
   Axios.get(`/contest/${id}/ranking/`, {
-    params: { force_update },
+    params: { force_update, public_view: publicView.value },
   })
     .then(res => {
       rankingData.value = res;
@@ -28,6 +36,14 @@ const getRankingData = (force_update = false) => {
     .finally(() => {
       loadingRanking.value = false;
     });
+};
+
+const revealRanking = () => {
+  Axios.post(`/contest/${id}/reveal_ranking/`).then(() => {
+    message.success('已解榜');
+    loadData();
+    getRankingData(true);
+  });
 };
 
 const loadData = () => {
@@ -157,7 +173,11 @@ const signUp = () => {
           tab="题目列表"
           :disabled="!contestData.problems.length"
         >
-          <ProblemTable :data="contestData.problems" />
+          <ProblemTable
+            :data="contestData.problems"
+            :show-submit-stats="contestData.problem_list_mode"
+            :show-solved="!hideSolved"
+          />
         </n-tab-pane>
         <n-tab-pane
           name="ranking"
@@ -174,6 +194,24 @@ const signUp = () => {
             说明：比赛排行榜仅统计比赛持续时间中的提交，每分钟更新一次。上次更新时间：<n-time
               :time="Number(new Date(rankingData.time))"
             />。
+            <n-popover
+              v-if="
+                store.state.user.permissions.includes('contest') &&
+                contestData.rule_type === 'ACM'
+              "
+            >
+              <template #trigger>
+                <n-switch
+                  v-model:value="publicView"
+                  style="margin-left: 10px"
+                  @update:value="getRankingData(true)"
+                >
+                  <template #checked>选手视角</template>
+                  <template #unchecked>管理员视角</template>
+                </n-switch>
+              </template>
+              选手视角会显示封榜公开榜（黄色 ?），不暴露封榜后的 AC/WA。
+            </n-popover>
             <n-popover v-if="store.state.user.permissions.includes('contest')">
               <template #trigger>
                 <n-button
@@ -184,6 +222,25 @@ const signUp = () => {
                 </n-button>
               </template>
               仅管理员可用，将会立即刷新排行榜缓存，该缓存对所有用户生效。
+            </n-popover>
+          </p>
+          <p
+            style="font-size: medium"
+            v-else-if="
+              store.state.user.permissions.includes('contest') &&
+              contestData.rule_type === 'ACM' &&
+              contestData.end_time &&
+              contestData.end_time <= Date.now() &&
+              !contestData.ranking_revealed_at
+            "
+          >
+            <n-popover>
+              <template #trigger>
+                <n-button @click="revealRanking" :disabled="loadingRanking">
+                  解榜
+                </n-button>
+              </template>
+              比赛已结束但仍处于封榜状态，点击后将公布最终榜单（对所有用户可见）。
             </n-popover>
           </p>
           <n-popover

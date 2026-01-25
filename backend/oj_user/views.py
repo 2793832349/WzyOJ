@@ -19,9 +19,9 @@ from rest_framework.views import APIView
 from rest_framework.viewsets import ReadOnlyModelViewSet, ModelViewSet
 
 from .models import User
-from .serializers import (ChangePasswordSerializer, LoginSerializer,
-                          UserBriefSerializer, UserDetailSerializer,
-                          UserSerializer)
+from .serializers import (ChangePasswordSerializer, CreateUserSerializer,
+                          LoginSerializer, UserBriefSerializer,
+                          UserDetailSerializer, UserSerializer)
 
 
 def deep_update(a: dict, b: dict, skip: list = []):
@@ -53,6 +53,32 @@ def deep_update(a: dict, b: dict, skip: list = []):
 #     return True
 
 
+
+def get_site_settings():
+    data = cache.get('site_settings')
+    if data is not None:
+        return data
+    data_example = json.loads(
+        settings.SITE_SETTINGS_EXAMPLE.read_text(encoding='utf-8'))
+    if not settings.SITE_SETTINGS.exists():
+        data = data_example
+        data['update_time'] = int(time.time() * 1000)
+        settings.SITE_SETTINGS.write_text(json.dumps(data,
+                                                     indent=4,
+                                                     ensure_ascii=False),
+                                          encoding='utf-8')
+    else:
+        data = json.loads(
+            settings.SITE_SETTINGS.read_text(encoding='utf-8'))
+        if deep_update(data, data_example, data_example['noDeepUpdate']):
+            data['update_time'] = int(time.time() * 1000)
+            settings.SITE_SETTINGS.write_text(json.dumps(
+                data, indent=4, ensure_ascii=False),
+                                              encoding='utf-8')
+    cache.set('site_settings', data, 86400)
+    return data
+
+
 class UserPagination(LimitOffsetPagination):
     default_limit = 50
     max_limit = 200
@@ -72,6 +98,8 @@ class UserViewSet(ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'list':
             return UserSerializer  # 使用 UserSerializer 以包含权限和状态信息
+        elif self.action == 'create':
+            return CreateUserSerializer
         elif self.action == 'update':
             return UserSerializer
         return UserDetailSerializer
@@ -182,7 +210,7 @@ class RegisterView(GenericAPIView):
 
     def post(self, request, *args, **kwargs):
         if self.request.user.is_anonymous or self.permission not in self.request.user.permissions:
-            site_settings = cache.get('site_settings')
+            site_settings = get_site_settings()
             if not site_settings.get('allowRegister'):
                 raise PermissionDenied(_('Register is not allowed.'))
         serializer = self.get_serializer(data=request.data)
@@ -203,11 +231,11 @@ class InfoAPIView(GenericAPIView):
     serializer_class = UserSerializer
 
     def get(self, request, *args, **kwargs):
-        if request.user.is_superuser and len(request.user.permissions) != 6:
+        if request.user.is_superuser and len(request.user.permissions) != 7:
             request.user.is_staff = True
             request.user.permissions = [
                 'site_setting', 'problem', 'submission', 'contest',
-                'discussion', 'user'
+                'discussion', 'user', 'class'
             ]
             request.user.save()
         serializer = self.get_serializer(instance=request.user)
@@ -226,7 +254,7 @@ class InfoAPIView(GenericAPIView):
 
 
 class SiteSettingsView(GenericAPIView):
-    permission_classes = [ReadOnly | IsAdminUser]
+    permission_classes = [ReadOnly | Granted]
     permission = 'site_setting'
 
     def get(self, request, *args, **kwargs):
@@ -241,30 +269,8 @@ class SiteSettingsView(GenericAPIView):
                 t.pop(i[-1])
             return data
 
+        data = get_site_settings()
         user = request.user
-        data = cache.get('site_settings')
-        if data is not None:
-            if user.is_authenticated and self.permission not in user.permissions:
-                data = wash(data)
-            return Response(data)
-        data_example = json.loads(
-            settings.SITE_SETTINGS_EXAMPLE.read_text(encoding='utf-8'))
-        if not settings.SITE_SETTINGS.exists():
-            data = data_example
-            data['update_time'] = int(time.time() * 1000)
-            settings.SITE_SETTINGS.write_text(json.dumps(data,
-                                                         indent=4,
-                                                         ensure_ascii=False),
-                                              encoding='utf-8')
-        else:
-            data = json.loads(
-                settings.SITE_SETTINGS.read_text(encoding='utf-8'))
-            if deep_update(data, data_example, data_example['noDeepUpdate']):
-                data['update_time'] = int(time.time() * 1000)
-                settings.SITE_SETTINGS.write_text(json.dumps(
-                    data, indent=4, ensure_ascii=False),
-                                                  encoding='utf-8')
-        cache.set('site_settings', data, 86400)
         if user.is_authenticated and self.permission not in user.permissions:
             data = wash(data)
         return Response(data)

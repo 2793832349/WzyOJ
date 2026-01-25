@@ -7,9 +7,12 @@ services:
       - backend
     volumes:
       - ./data/frontend:/usr/share/nginx/html:ro
+      - ./data/backend/media:/usr/share/nginx/media:ro
       - ./config/nginx-templates:/etc/nginx/templates:ro
+        #- /etc/letsencrypt:/etc/letsencrypt:ro
     ports:
       - "80:80"
+        #- "443:443"
     environment:
       NGINX_HOST: localhost
       NGINX_PORT: 80
@@ -111,6 +114,7 @@ services:
       - ./data/backend/judge_data/test_data:/data/judge_data/test_data
       - ./data/backend/judge_data/spj:/data/judge_data/spj
       - ./data/backend/problem_files:/data/problem_files
+      - ./data/backend/media:/srv/server/media
       - ./data/static-files:/srv/server/static
     environment:
       OJ_MODE: PRODUCTION
@@ -123,7 +127,18 @@ services:
       OJ_JUDGE_HOST: oj-judge-server
       OJ_PROBLEM_FILE_ROOT: /data/problem_files/
       OJ_JUDGE_DATA_ROOT: /data/judge_data/
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       UWSGI_PORT: 8080
       SUPERUSER_USERNAME: ${SUPERUSER_USERNAME:-admin}
       SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:-123456}
       SUPERUSER_EMAIL: ${SUPERUSER_EMAIL:-admin@genuine.og}
+  coturn:
+    image: coturn/coturn:latest
+    container_name: oj-coturn
+    restart: always
+    network_mode: host
+    volumes:
+      - ./config/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: -c /etc/coturn/turnserver.conf

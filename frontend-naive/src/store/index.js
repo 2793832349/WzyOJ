@@ -30,7 +30,7 @@ const store = createStore({
       state.user = data;
     },
     logout(state) {
-      state.user = {};
+      state.user = { permissions: [] };
     },
     setDisplaySettings(state, data) {
       Object.assign(state.displaySettings, data);

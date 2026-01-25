@@ -27,7 +27,7 @@ CONFIG = {
             'max_memory':
             1024 * 1024 * 1024,
             'compile_command':
-            '/usr/bin/g++ -DONLINE_JUDGE -O2 -W -fmax-errors=3 -std=c++14 {src_path} -lm -o {exe_path}',
+            '/usr/bin/g++ -DONLINE_JUDGE -O2 -W -fmax-errors=3 -std=c++23 {src_path} -lm -o {exe_path}',
         },
         'run': {
             'command':
@@ -64,13 +64,13 @@ CONFIG = {
             'exe_name':
             'main',
             'max_cpu_time':
-            3000,
+            10000,
             'max_real_time':
-            5000,
+            20000,
             'max_memory':
-            128 * 1024 * 1024,
+            1024 * 1024 * 1024,
             'compile_command':
-            '/usr/bin/g++ -DONLINE_JUDGE -O2 -W -fmax-errors=3 -std=c++14 {src_path} -lm -o {exe_path}',
+            '/usr/bin/g++ -DONLINE_JUDGE -O2 -W -fmax-errors=3 -std=c++23 {src_path} -lm -o {exe_path}',
         },
         'run': {
             'command': '{exe_path}',

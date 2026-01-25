@@ -14,7 +14,7 @@ n=0
 while [ $n -lt 5 ]; do
     python3 manage.py makemigrations oj_user
     python3 manage.py migrate
-    python3 manage.py makemigrations oj_problem oj_submission oj_contest oj_discussion
+    python3 manage.py makemigrations oj_problem oj_submission oj_contest oj_battle oj_discussion oj_class oj_course oj_live
     python3 manage.py migrate
     python3 manage.py collectstatic --noinput
     break

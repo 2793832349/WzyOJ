@@ -39,14 +39,19 @@ const problem = ref({
 const fileList = ref([]);
 
 if (id) {
-  Axios.get(`/problem/${id}/`).then(res => {
-    res.tags = res.tags.map(tag => tag.id);
-    problem.value = res;
-    fileList.value = res.files.map(file => ({
-      name: file,
-      status: 'finished',
-    }));
-  });
+  Axios.get(`/problem/${id}/`)
+    .then(res => {
+      res.tags = res.tags.map(tag => tag.id);
+      problem.value = res;
+      fileList.value = res.files.map(file => ({
+        name: file,
+        status: 'finished',
+      }));
+    })
+    .catch(() => {
+      message.error('题目不存在或暂时无法查看！');
+      router.push({ name: 'problem_list' });
+    });
 }
 
 const tagsOptions = ref([]);
@@ -121,10 +126,162 @@ const deleteProblem = () => {
     router.push({ name: 'problem_list' });
   });
 };
+
+const showImportModal = ref(false);
+const importText = ref('');
+
+const parseImportText = () => {
+  const text = importText.value.trim();
+  if (!text) {
+    message.warning('请输入题目内容');
+    return;
+  }
+
+  const lines = text.split('\n');
+  let title = '';
+  let background = '';
+  let description = '';
+  let inputFormat = '';
+  let outputFormat = '';
+  let hint = '';
+  const samples = [];
+
+  let currentSection = '';
+  let currentContent = [];
+  let inFencedSampleBlock = false;
+
+  const sectionMap = {
+    '题目背景': 'background',
+    '题目描述': 'description',
+    '输入格式': 'input_format',
+    '输出格式': 'output_format',
+    '提示': 'hint',
+    '说明/提示': 'hint',
+    '数据范围': 'hint',
+  };
+
+  const saveCurrentSection = () => {
+    let content = currentContent.join('\n').trim();
+    // 去掉代码块标记 ```
+    content = content.replace(/^```\w*\n?/gm, '').replace(/\n?```$/gm, '').trim();
+    
+    if (currentSection === 'background') background = content;
+    else if (currentSection === 'description') description = content;
+    else if (currentSection === 'input_format') inputFormat = content;
+    else if (currentSection === 'output_format') outputFormat = content;
+    else if (currentSection === 'hint') hint = content;
+    else if (currentSection.startsWith('sample_input_')) {
+      const idx = parseInt(currentSection.replace('sample_input_', '')) - 1;
+      if (!samples[idx]) samples[idx] = { input: '', output: '' };
+      samples[idx].input = content;
+    } else if (currentSection.startsWith('sample_output_')) {
+      const idx = parseInt(currentSection.replace('sample_output_', '')) - 1;
+      if (!samples[idx]) samples[idx] = { input: '', output: '' };
+      samples[idx].output = content;
+    }
+    currentContent = [];
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // fenced code block 样例 (```input1 / ```output1)
+    if (inFencedSampleBlock) {
+      if (/^```\s*$/.test(line)) {
+        saveCurrentSection();
+        currentSection = '';
+        inFencedSampleBlock = false;
+        continue;
+      }
+      if (currentSection) {
+        currentContent.push(line);
+      }
+      continue;
+    }
+
+    const fencedSampleMatch = line.match(/^```\s*(input|output)\s*#?(\d+)\s*$/i);
+    if (fencedSampleMatch) {
+      saveCurrentSection();
+      const sampleType = fencedSampleMatch[1].toLowerCase();
+      const sampleIndex = fencedSampleMatch[2];
+      currentSection = `sample_${sampleType}_${sampleIndex}`;
+      inFencedSampleBlock = true;
+      continue;
+    }
+    
+    // 解析标题 (# P14360 [CSP-J 2025] 多边形)
+    const titleMatch = line.match(/^#\s+(?:P\d+\s+)?(.+)$/);
+    if (titleMatch && !title) {
+      title = titleMatch[1].trim();
+      continue;
+    }
+
+    // 解析三级标题 (### 输入 #1 或 ### 输出 #1)
+    const sampleInputMatch = line.match(/^###\s+输入\s*#?(\d+)/);
+    const sampleOutputMatch = line.match(/^###\s+输出\s*#?(\d+)/);
+    if (sampleInputMatch) {
+      saveCurrentSection();
+      currentSection = `sample_input_${sampleInputMatch[1]}`;
+      continue;
+    }
+    if (sampleOutputMatch) {
+      saveCurrentSection();
+      currentSection = `sample_output_${sampleOutputMatch[1]}`;
+      continue;
+    }
+
+    // 解析二级标题
+    const sectionMatch = line.match(/^##\s+(.+)$/);
+    if (sectionMatch) {
+      saveCurrentSection();
+      const sectionName = sectionMatch[1].trim();
+      
+      if (sectionMap[sectionName]) {
+        currentSection = sectionMap[sectionName];
+      } else {
+        currentSection = '';
+      }
+      continue;
+    }
+
+    // 普通内容行
+    if (currentSection) {
+      currentContent.push(line);
+    }
+  }
+  
+  // 保存最后一个section
+  saveCurrentSection();
+
+  // 填充数据
+  if (title) problem.value.title = title;
+  if (background) problem.value.background = background;
+  if (description) problem.value.description = description;
+  if (inputFormat) problem.value.input_format = inputFormat;
+  if (outputFormat) problem.value.output_format = outputFormat;
+  if (hint) problem.value.hint = hint;
+  
+  // 填充样例，确保至少有3个
+  if (samples.length > 0) {
+    while (samples.length < 3) {
+      samples.push({ input: '', output: '' });
+    }
+    problem.value.samples = samples;
+  }
+
+  showImportModal.value = false;
+  importText.value = '';
+  message.success('导入成功！');
+};
 </script>
 
 <template>
   <n-space vertical size="large">
+    <div>
+      <n-button type="info" @click="showImportModal = true">
+        从文本导入题目
+      </n-button>
+    </div>
     <div>
       <h2>题目标题</h2>
       <n-input
@@ -184,7 +341,7 @@ const deleteProblem = () => {
       </n-tabs>
     </div>
     <div>
-      <h2>数据范围</h2>
+      <h2>提示/数据范围</h2>
       <MdEditor v-model:content="problem.hint" />
     </div>
     <div v-if="id">
@@ -291,4 +448,20 @@ const deleteProblem = () => {
       您确认要删除题目 {{ problem.title }} 吗？该操作不可撤销。
     </n-popconfirm>
   </n-space>
+
+  <n-modal v-model:show="showImportModal" preset="dialog" title="从文本导入题目">
+    <n-alert type="info" style="margin-bottom: 16px">
+      支持洛谷格式的题目文本，会自动识别 ## 题目描述、## 输入格式、## 输出格式、## 样例输入、## 样例输出、## 说明/提示 等章节。
+    </n-alert>
+    <n-input
+      v-model:value="importText"
+      type="textarea"
+      placeholder="请粘贴题目内容..."
+      :rows="15"
+    />
+    <template #action>
+      <n-button @click="showImportModal = false">取消</n-button>
+      <n-button type="primary" @click="parseImportText">导入</n-button>
+    </template>
+  </n-modal>
 </template>

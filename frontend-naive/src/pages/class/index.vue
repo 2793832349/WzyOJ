@@ -24,13 +24,18 @@
                   <n-text strong style="font-size: 18px">{{ cls.title }}</n-text>
                   <n-tag v-if="cls.is_hidden" type="warning" size="small">隐藏</n-tag>
                 </n-space>
-                <n-button
-                  type="error"
-                  size="small"
-                  @click.stop="handleDisband(cls)"
-                >
-                  解散班级
-                </n-button>
+                <n-space>
+                  <n-button size="small" @click.stop="openEditModal(cls)">
+                    编辑
+                  </n-button>
+                  <n-button
+                    type="error"
+                    size="small"
+                    @click.stop="handleDisband(cls)"
+                  >
+                    解散班级
+                  </n-button>
+                </n-space>
               </n-space>
             </template>
             <div @click="$router.push({ name: 'class_detail', params: { id: cls.id } })">
@@ -117,6 +122,33 @@
         </n-space>
       </template>
     </n-modal>
+
+    <n-modal v-model:show="showEditModal" preset="dialog" title="编辑班级">
+      <n-form :model="editClass" label-placement="left" label-width="80">
+        <n-form-item label="班级名称" required>
+          <n-input v-model:value="editClass.title" placeholder="请输入班级名称" />
+        </n-form-item>
+        <n-form-item label="班级描述">
+          <n-input
+            v-model:value="editClass.description"
+            type="textarea"
+            placeholder="请输入班级描述"
+            :rows="3"
+          />
+        </n-form-item>
+        <n-form-item label="是否隐藏">
+          <n-switch v-model:value="editClass.is_hidden" />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-space>
+          <n-button @click="showEditModal = false">取消</n-button>
+          <n-button type="primary" @click="updateClass" :loading="updating">
+            保存
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -124,15 +156,25 @@
 import { ref, computed, onMounted } from 'vue';
 import { useMessage, useDialog } from 'naive-ui';
 import Axios from '@/plugins/axios';
+import store from '@/store';
 
 const message = useMessage();
 const dialog = useDialog();
 
 const classes = ref([]);
 const showCreateModal = ref(false);
+const showEditModal = ref(false);
 const creating = ref(false);
+const updating = ref(false);
 const activeTab = ref('joined'); // 默认选中"我加入的班级"
 const newClass = ref({
+  title: '',
+  description: '',
+  is_hidden: false,
+});
+
+const editingClassId = ref(null);
+const editClass = ref({
   title: '',
   description: '',
   is_hidden: false,
@@ -148,8 +190,10 @@ const joinedClasses = computed(() => {
   return classes.value.filter(cls => cls.user_role === 'student');
 });
 
-// 是否可以创建班级（任何登录用户都可以）
-const canCreateClass = ref(true);
+// 是否可以创建班级
+const canCreateClass = computed(() => {
+  return store.state.user?.permissions?.includes('class');
+});
 
 // 获取班级列表
 const fetchClasses = () => {
@@ -164,6 +208,41 @@ const fetchClasses = () => {
     })
     .catch(() => {
       message.error('获取班级列表失败');
+    });
+};
+
+const openEditModal = (cls) => {
+  editingClassId.value = cls.id;
+  editClass.value = {
+    title: cls.title || '',
+    description: cls.description || '',
+    is_hidden: !!cls.is_hidden,
+  };
+  showEditModal.value = true;
+};
+
+const updateClass = () => {
+  if (!editingClassId.value) {
+    message.error('班级信息异常');
+    return;
+  }
+  if (!editClass.value.title) {
+    message.warning('请输入班级名称');
+    return;
+  }
+
+  updating.value = true;
+  Axios.patch(`class/class/${editingClassId.value}/`, editClass.value)
+    .then(() => {
+      message.success('保存成功');
+      showEditModal.value = false;
+      fetchClasses();
+    })
+    .catch(() => {
+      message.error('保存失败');
+    })
+    .finally(() => {
+      updating.value = false;
     });
 };
 

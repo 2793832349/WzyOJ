@@ -49,7 +49,17 @@ class JudgeServer(object):
                 log=str(e),
                 detail=[]
             ))
-        result_queue.put(None)
+        except Exception as e:
+            result_queue.put(Judger.make_report(
+                status=JudgeResult.SYSTEM_ERROR,
+                score=0,
+                max_time=0,
+                max_memory=0,
+                log=f'Unexpected error: {type(e).__name__}: {e}',
+                detail=[]
+            ))
+        finally:
+            result_queue.put(None)
 
     def feedback(self, client, queue):
         while True:

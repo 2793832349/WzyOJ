@@ -1,8 +1,8 @@
 {
     "noDeepUpdate": ["languages"],
     "notForClient": ["captcha.serverKey"],
-    "name": "GENUINE-OJ",
-    "title": "GENUINE-OJ",
+    "name": "WZY-OJ",
+    "title": "WZY-OJ",
     "footer": {
         "useFooter": true,
         "icp": "ICP-XXXXXXXXXX"
@@ -26,7 +26,7 @@
         "serverKey": "",
         "backendUrl": ""
     },
-    "defaultSubmitLanguage": "python3",
+    "defaultSubmitLanguage": "cpp",
     "forceHideSubmissions": false,
     "enableDiscussion": true
 }

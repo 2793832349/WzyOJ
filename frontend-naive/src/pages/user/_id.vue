@@ -11,9 +11,13 @@ const route = useRoute();
 const id = ref(route.params.id),
   data = ref({});
 
-Axios.get(`/user/${id.value}/`).then(res => {
-  data.value = res;
-});
+const refresh = () => {
+  Axios.get(`/user/${id.value}/`).then(res => {
+    data.value = res;
+  });
+};
+
+refresh();
 </script>
 
 <template>
@@ -78,7 +82,7 @@ Axios.get(`/user/${id.value}/`).then(res => {
       </div>
       <div>
         <h2>最近的提交</h2>
-        <SubmissionTable :data="data.submissions" />
+        <SubmissionTable :data="data.submissions" @refresh="refresh" />
       </div>
     </n-layout-content>
   </n-layout>

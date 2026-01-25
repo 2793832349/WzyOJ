@@ -18,4 +18,10 @@ uwsgi.ini
 static/
 problem_files/*
 !problem_files/.gitkeep
+
 /settings.json
+
+!oj_battle/migrations/
+!oj_battle/migrations/**
+!oj_live/migrations/
+!oj_live/migrations/**
