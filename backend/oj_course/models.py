@@ -6,6 +6,14 @@ from oj_problem.models import Problem
 from oj_user.models import User
 
 
+class VideoProcessingStatus(models.TextChoices):
+    """视频处理状态"""
+    PENDING = 'pending', _('待处理')
+    PROCESSING = 'processing', _('处理中')
+    COMPLETED = 'completed', _('已完成')
+    FAILED = 'failed', _('处理失败')
+
+
 class Course(models.Model):
     title = models.CharField(_('title'), max_length=100)
     description = models.TextField(_('description'), blank=True, default='')
@@ -63,6 +71,22 @@ class CourseChapter(models.Model):
     description = models.TextField(_('description'), blank=True, default='')
     order = models.IntegerField(_('order'), default=0)
     video = models.FileField(upload_to='course_videos/%Y/%m/', null=True, blank=True)
+    
+    # 视频处理相关字段
+    video_status = models.CharField(
+        _('video status'),
+        max_length=20,
+        choices=VideoProcessingStatus.choices,
+        default=VideoProcessingStatus.PENDING,
+    )
+    m3u8_playlist = models.TextField(_('m3u8 playlist'), blank=True, default='')
+    m3u8_file = models.FileField(upload_to='course_videos_m3u8/%Y/%m/', null=True, blank=True)
+    video_segments_dir = models.CharField(_('video segments directory'), max_length=500, blank=True, default='')
+    duration = models.IntegerField(_('video duration'), default=0, help_text=_('seconds'))
+    bitrate = models.CharField(_('bitrate'), max_length=50, blank=True, default='')
+    resolution = models.CharField(_('resolution'), max_length=50, blank=True, default='')
+    error_message = models.TextField(_('error message'), blank=True, default='')
+    
     created_at = models.DateTimeField(_('created at'), default=timezone.now)
     updated_at = models.DateTimeField(_('updated at'), auto_now=True)
 

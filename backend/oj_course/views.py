@@ -12,8 +12,9 @@ from rest_framework.response import Response
 from oj_backend.permissions import Granted, IsAuthenticatedAndReadOnly
 from oj_problem.models import Problem
 
-from .models import ChapterProblem, Course, CourseChapter, CourseEnrollment
+from .models import ChapterProblem, Course, CourseChapter, CourseEnrollment, VideoProcessingStatus
 from .serializers import CourseChapterSerializer, CourseDetailSerializer, CourseSerializer
+from .tasks import process_chapter_video
 
 
 class CoursePagination(LimitOffsetPagination):
@@ -159,23 +160,103 @@ class CourseChapterViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='upload-video')
     def upload_video(self, request, pk=None):
+        """上传视频到课程章节"""
         chapter = self.get_object()
         if not (request.user.is_staff or chapter.course.teacher_id == request.user.id):
             raise PermissionDenied('只有教师可以上传视频')
-        f = request.FILES.get('file')
-        if not f:
+        
+        video_file = request.FILES.get('file')
+        if not video_file:
             return Response({'error': '未上传文件'}, status=status.HTTP_400_BAD_REQUEST)
-        chapter.video = f
-        chapter.save(update_fields=['video'])
-        serializer = self.get_serializer(chapter)
-        return Response(serializer.data)
-
-    def create(self, request, *args, **kwargs):
-        try:
-            return super().create(request, *args, **kwargs)
-        except Exception as exc:
-            self.logger.exception('Failed to create course chapter')
+        
+        # 验证文件类型
+        allowed_types = ['.mp4', '.avi', '.mov', '.mkv', '.flv', '.wmv']
+        file_ext = '.' + video_file.name.split('.')[-1].lower()
+        if file_ext not in allowed_types:
             return Response(
-                {'error': str(exc), 'type': exc.__class__.__name__},
+                {'error': f'不支持的文件类型，允许的格式: {", ".join(allowed_types)}'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        # 检查文件大小（最大 5GB）
+        max_size = 5 * 1024 * 1024 * 1024  # 5GB
+        if video_file.size > max_size:
+            return Response(
+                {'error': '文件过大，最大允许 5GB'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 保存视频文件
+        chapter.video = video_file
+        chapter.video_status = VideoProcessingStatus.PENDING
+        chapter.save(update_fields=['video', 'video_status'])
+        
+        # 异步处理视频转换
+        process_chapter_video.delay(chapter.id)
+        
+        serializer = self.get_serializer(chapter)
+        return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=['get'])
+    def video_status(self, request, pk=None):
+        """获取视频处理状态"""
+        chapter = self.get_object()
+        return Response({
+            'id': chapter.id,
+            'video_status': chapter.video_status,
+            'duration': chapter.duration,
+            'resolution': chapter.resolution,
+            'bitrate': chapter.bitrate,
+            'error_message': chapter.error_message if chapter.video_status == VideoProcessingStatus.FAILED else None,
+        })
+
+    @action(detail=True, methods=['get'])
+    def video_playlist(self, request, pk=None):
+        """获取视频 m3u8 播放列表"""
+        chapter = self.get_object()
+        
+        if chapter.video_status != VideoProcessingStatus.COMPLETED:
+            return Response(
+                {'error': f'视频处理状态: {chapter.video_status}'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if not chapter.m3u8_playlist:
+            return Response(
+                {'error': '未找到 m3u8 播放列表'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+        return Response({
+            'id': chapter.id,
+            'title': chapter.title,
+            'duration': chapter.duration,
+            'resolution': chapter.resolution,
+            'bitrate': chapter.bitrate,
+            'm3u8_url': self.request.build_absolute_uri(f'/media/{chapter.video_segments_dir}/index.m3u8'),
+            'm3u8_content': chapter.m3u8_playlist,
+        })
+
+    @action(detail=True, methods=['post'])
+    def reprocess_video(self, request, pk=None):
+        """重新处理视频转换"""
+        chapter = self.get_object()
+        
+        if not (request.user.is_staff or chapter.course.teacher_id == request.user.id):
+            raise PermissionDenied('只有教师可以重新处理视频')
+        
+        if not chapter.video:
+            return Response(
+                {'error': '章节中没有视频文件'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # 重置状态并重新处理
+        chapter.video_status = VideoProcessingStatus.PENDING
+        chapter.error_message = ''
+        chapter.save(update_fields=['video_status', 'error_message'])
+        
+        process_chapter_video.delay(chapter.id)
+        
+        serializer = self.get_serializer(chapter)
+        return Response(serializer.data, status=status.HTTP_202_ACCEPTED)
