@@ -1,0 +1,33 @@
+# 全局换行符设置
+* text=auto
+
+# Shell 脚本使用 LF（Unix 风格）
+*.sh text eol=lf
+*.bash text eol=lf
+
+# Python 文件使用 LF
+*.py text eol=lf
+
+# JavaScript/TypeScript 使用 LF
+*.js text eol=lf
+*.ts text eol=lf
+*.vue text eol=lf
+*.json text eol=lf
+
+# Markdown 使用 LF
+*.md text eol=lf
+
+# Windows 特定文件使用 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# 二进制文件
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.mov binary
+*.mp4 binary
+*.m3u8 text

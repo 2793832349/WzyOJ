@@ -113,6 +113,7 @@ LOCAL_APPS = [
     'oj_discussion.apps.DiscussionConfig',
     'oj_class.apps.OjClassConfig',
     'oj_course.apps.CourseConfig',
+    'oj_videocourse.apps.OjVideocourseConfig',
     'oj_live.apps.LiveConfig',
     'oj_book.apps.OjBookConfig',
 ]
@@ -239,6 +240,10 @@ JUDGE_DATA_ROOT = Path(os.getenv('OJ_JUDGE_DATA_ROOT',
 SUBMISSION_ROOT = JUDGE_DATA_ROOT / 'submission'
 TEST_DATA_ROOT = JUDGE_DATA_ROOT / 'test_data'
 SPJ_ROOT = JUDGE_DATA_ROOT / 'spj'
+
+# Video Course Output Directory
+VIDEOCOURSE_OUTPUT_ROOT = Path(
+    os.getenv('OJ_VIDEOCOURSE_OUTPUT_ROOT', JUDGE_DATA_ROOT / 'videocourse_output'))
 
 DEEPSEEK_BASE_URL = os.getenv('DEEPSEEK_BASE_URL', 'https://api.deepseek.com')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY', '')
