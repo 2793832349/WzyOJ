@@ -303,6 +303,51 @@ const routes = [
       permission: 'class',
     },
   },
+  // 录播课（视频课程）路由 - 完全独立的页面系统
+  {
+    path: '/videocourse/',
+    name: 'videocourse_list',
+    component: () => import('@/pages/videocourse/index.vue'),
+    meta: {
+      title: '录播课',
+      cate: 'videocourse',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/videocourse/:id/',
+    name: 'videocourse_detail',
+    component: () => import('@/pages/videocourse/_id.vue'),
+    meta: {
+      title: '录播课 #{id}',
+      cate: 'videocourse',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/videocourse/create/',
+    name: 'videocourse_create',
+    component: () => import('@/pages/videocourse/edit.vue'),
+    meta: {
+      title: '创建录播课',
+      cate: 'videocourse',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'class',
+    },
+  },
+  {
+    path: '/videocourse/:id/edit/',
+    name: 'videocourse_edit',
+    component: () => import('@/pages/videocourse/edit.vue'),
+    meta: {
+      title: '编辑录播课 #{id}',
+      cate: 'videocourse',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'class',
+    },
+  },
   {
     path: '/submission/',
     name: 'submission_list',
