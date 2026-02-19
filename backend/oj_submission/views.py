@@ -12,6 +12,7 @@ from oj_backend.permissions import (Captcha, Granted,
                                     IsAuthenticatedAndReadCreate,
                                     IsAuthenticatedAndReadOnly)
 from oj_contest.models import Contest
+from oj_problem.models import Problem
 from rest_framework import status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import ValidationError
@@ -24,85 +25,117 @@ from rest_framework.viewsets import ReadOnlyModelViewSet
 
 from .models import StatusChoices, Submission
 from .serializers import SubmissionDetailSerializer, SubmissionSerializer
+from .judge_source import build_judge_source
 
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def debug_run(request):
     """
-    自测运行代码
+    在线运行代码（支持 LeetCode 模式模板拼接）
     """
-    language = request.data.get('language', 'cpp')
-    source = request.data.get('source', '')
-    input_data = request.data.get('input', '')
-    
-    if not source:
+    language = (request.data.get('language') or 'cpp').strip()
+    source = request.data.get('source') or ''
+    input_data = request.data.get('input') or ''
+    problem_id = request.data.get('problem_id')
+
+    if not source.strip():
         return Response({'error': '代码不能为空'}, status=400)
-    
-    # 限制代码长度
+
     if len(source) > 65536:
         return Response({'error': '代码过长'}, status=400)
-    
-    # 限制输入长度
+
     if len(input_data) > 65536:
         return Response({'error': '输入数据过长'}, status=400)
-    
+
+    problem = None
+    if problem_id not in [None, '']:
+        problem = Problem.objects.filter(id=problem_id).first()
+        if not problem:
+            return Response({'error': '题目不存在'}, status=400)
+
+    run_source = source
+    if problem:
+        run_source = build_judge_source(problem, language, source)
+
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 根据语言确定文件名和编译/运行命令
+            compile_stderr = ''
+            run_cmd = []
+
             if language == 'cpp':
                 src_file = os.path.join(tmpdir, 'main.cpp')
                 exe_file = os.path.join(tmpdir, 'main')
-                with open(src_file, 'w') as f:
-                    f.write(source)
-                # 编译
+                with open(src_file, 'w', encoding='utf-8') as f:
+                    f.write(run_source)
+
                 compile_result = subprocess.run(
                     ['g++', '-o', exe_file, src_file, '-O2', '-std=c++17'],
-                    capture_output=True, text=True, timeout=10
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 if compile_result.returncode != 0:
-                    return Response({'error': f'编译错误:\n{compile_result.stderr}'})
-                run_cmd = [exe_file]
+                    compile_stderr = compile_result.stderr
+                else:
+                    run_cmd = [exe_file]
+
             elif language == 'c':
                 src_file = os.path.join(tmpdir, 'main.c')
                 exe_file = os.path.join(tmpdir, 'main')
-                with open(src_file, 'w') as f:
-                    f.write(source)
-                # 编译
+                with open(src_file, 'w', encoding='utf-8') as f:
+                    f.write(run_source)
+
                 compile_result = subprocess.run(
                     ['gcc', '-o', exe_file, src_file, '-O2'],
-                    capture_output=True, text=True, timeout=10
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
                 )
                 if compile_result.returncode != 0:
-                    return Response({'error': f'编译错误:\n{compile_result.stderr}'})
-                run_cmd = [exe_file]
+                    compile_stderr = compile_result.stderr
+                else:
+                    run_cmd = [exe_file]
+
             elif language == 'python3':
                 src_file = os.path.join(tmpdir, 'main.py')
-                with open(src_file, 'w') as f:
-                    f.write(source)
+                with open(src_file, 'w', encoding='utf-8') as f:
+                    f.write(run_source)
                 run_cmd = ['python3', src_file]
+
             else:
                 return Response({'error': f'不支持的语言: {language}'}, status=400)
-            
-            # 运行
+
+            if compile_stderr:
+                return Response({
+                    'ok': False,
+                    'phase': 'compile',
+                    'error': compile_stderr,
+                    'wrapped': bool(problem and run_source != source),
+                })
+
             run_result = subprocess.run(
                 run_cmd,
                 input=input_data,
                 capture_output=True,
                 text=True,
                 timeout=5,
-                cwd=tmpdir
+                cwd=tmpdir,
             )
-            
-            output = run_result.stdout
-            if run_result.returncode != 0 and run_result.stderr:
-                output += f'\n[运行错误]\n{run_result.stderr}'
-            
-            return Response({'output': output})
+
+            return Response({
+                'ok': run_result.returncode == 0,
+                'phase': 'run',
+                'output': run_result.stdout,
+                'error': run_result.stderr if run_result.returncode != 0 else '',
+                'exit_code': run_result.returncode,
+                'wrapped': bool(problem and run_source != source),
+            })
+
     except subprocess.TimeoutExpired:
-        return Response({'error': '运行超时 (5秒)'})
+        return Response({'ok': False, 'phase': 'run', 'error': '运行超时 (5秒)'})
     except Exception as e:
-        return Response({'error': f'运行失败: {str(e)}'}, status=500)
+        return Response({'ok': False, 'phase': 'system', 'error': f'运行失败: {str(e)}'}, status=500)
 
 
 class SubmissionPagination(LimitOffsetPagination):
@@ -236,6 +269,7 @@ class SubmissionViewSet(ReadOnlyModelViewSet, CreateModelMixin, DestroyModelMixi
         submission.save()
 
         from .tasks import judge
+        judge_source = build_judge_source(submission.problem, submission.language, submission.source)
         judge.delay(
             submission.id, submission.problem.test_case.test_case_id,
             submission.problem.test_case.spj_id
@@ -243,7 +277,7 @@ class SubmissionViewSet(ReadOnlyModelViewSet, CreateModelMixin, DestroyModelMixi
             submission.problem.test_case.test_case_config,
             submission.problem.test_case.subcheck_config
             if submission.problem.test_case.use_subcheck else None,
-            submission.language, submission.source, {
+            submission.language, judge_source, {
                 'max_cpu_time': submission.problem.time_limit,
                 'max_memory': submission.problem.memory_limit * 1024 * 1024,
             })

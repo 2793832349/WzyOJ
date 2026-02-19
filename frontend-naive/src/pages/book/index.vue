@@ -82,6 +82,8 @@ onMounted(() => {
                     {{ difficultyMap[book.difficulty]?.label || book.difficulty }}
                   </n-tag>
                   <n-tag v-if="!book.is_published" type="warning" size="small">未发布</n-tag>
+                  <n-tag v-if="book.is_free" type="success" size="small">免费</n-tag>
+                  <n-tag v-else type="error" size="small">付费</n-tag>
                 </n-space>
                 <n-button v-if="canManage" size="tiny" @click="goToEdit(book, $event)">编辑</n-button>
               </n-space>

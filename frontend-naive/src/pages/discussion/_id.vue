@@ -1,17 +1,43 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { useMessage } from 'naive-ui';
 import Axios from '@/plugins/axios';
 import { useRoute } from 'vue-router';
+import router from '@/router';
 import ContestTable from '@/components/ContestTable.vue';
 import ProblemTable from '@/components/ProblemTable.vue';
 import MdEditor from '@/components/MdEditor.vue';
 import Captcha from '../../components/captcha.vue';
+import store from '@/store';
 
-const route = useRoute(),
-  message = useMessage();
+const route = useRoute();
+const message = useMessage();
 
-const id = route.params.id,
-  discussion = ref({});
+const id = route.params.id;
+const discussion = ref({});
+
+const canPublishDiscussion = computed(() => {
+  const user = store.state.user || {};
+  const perms = user.permissions || [];
+  return Boolean(
+    user.is_staff
+    || user.is_superuser
+    || perms.includes('problem')
+    || perms.includes('class')
+  );
+});
+
+const canEditDiscussion = computed(() => {
+  const user = store.state.user || {};
+  const authorId = discussion.value?.author?.id;
+  if (!authorId) return false;
+  if (user.is_staff || user.is_superuser) return true;
+  return canPublishDiscussion.value && user.id === authorId;
+});
+
+const gotoEditDiscussion = () => {
+  router.push({ name: 'discussion_edit', params: { id } });
+};
 
 const loadData = () => {
   Axios.get(`/discussion/${id}/`).then(res => {
@@ -64,6 +90,10 @@ const replyTo = (reply_id, go = true) => {
   }
 };
 const submitReply = async () => {
+  if (!canPublishDiscussion.value) {
+    message.error('仅教师可发布回复');
+    return;
+  }
   const match = newReply.value.content.match(/^Reply to #(\d+)\n+/);
   if (match) {
     newReply.value.reply_to = parseInt(match[1]);
@@ -94,7 +124,10 @@ const goto = reply_id => {
 </script>
 
 <template>
-  <h1>{{ discussion.title }}</h1>
+  <n-space align="center" justify="space-between">
+    <h1 style="margin: 0">{{ discussion.title }}</h1>
+    <n-button v-if="canEditDiscussion" @click="gotoEditDiscussion">编辑讨论</n-button>
+  </n-space>
   <n-collapse>
     <n-collapse-item
       title="关联问题"
@@ -161,7 +194,7 @@ const goto = reply_id => {
       </div>
     </template>
     <template #action>
-      <n-button-group size="small">
+      <n-button-group size="small" v-if="canPublishDiscussion">
         <n-button @click="replyTo(reply.id)">回复</n-button>
       </n-button-group>
     </template>
@@ -182,7 +215,7 @@ const goto = reply_id => {
 
   <n-divider />
 
-  <div>
+  <div v-if="canPublishDiscussion">
     <h2>新回复</h2>
     <p>第一行“Reply to #X”格式的内容会在发布时自动转义和消去。</p>
     <p>暂不支持@用户。</p>
@@ -202,6 +235,7 @@ const goto = reply_id => {
       发布
     </n-button>
   </div>
+  <n-alert v-else type="info" :show-icon="false">仅教师可发布回复</n-alert>
 </template>
 
 <style lang="scss" scoped>

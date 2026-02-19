@@ -10,6 +10,7 @@ services:
       - ./data/backend/media:/usr/share/nginx/media:ro
       - ./config/nginx-templates:/etc/nginx/templates:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ../AlgoCard:/usr/share/nginx/algocard:ro
     ports:
       - "80:80"
       - "443:443"

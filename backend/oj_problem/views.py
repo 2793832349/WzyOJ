@@ -93,6 +93,22 @@ class ProblemViewSet(ModelViewSet):
             return ProblemSerializer
         return ProblemDetailSerializer
 
+    @action(detail=True, methods=['get'], url_path='adjacent')
+    def adjacent(self, request, pk=None):
+        """
+        获取当前题目的上一题和下一题 ID
+        """
+        queryset = self.get_queryset()
+        current_id = int(pk)
+        
+        prev_problem = queryset.filter(id__lt=current_id).order_by('-id').first()
+        next_problem = queryset.filter(id__gt=current_id).order_by('id').first()
+        
+        return Response({
+            'prev': prev_problem.id if prev_problem else None,
+            'next': next_problem.id if next_problem else None,
+        })
+
     @action(detail=True,
             methods=['get', 'delete'],
             url_path='file/(?P<file_name>.+)')

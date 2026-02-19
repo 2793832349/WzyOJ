@@ -61,6 +61,69 @@ s = re.sub(
 p.write_text(s, encoding='utf-8')
 PY
 
+RUN cat > /code/print_compat.h <<'H'
+#pragma once
+
+#include <cstdio>
+#include <string>
+#include <string_view>
+#include <utility>
+
+#if defined(__has_include) && __has_include(<print>)
+#include <print>
+#endif
+
+#if !(defined(__has_include) && __has_include(<print>)) || !defined(__cpp_lib_print)
+  #if defined(__has_include) && __has_include(<format>)
+    #include <format>
+
+namespace std {
+
+template <class... Args>
+inline void print(std::string_view fmt, Args&&... args) {
+    std::string s = std::vformat(fmt, std::make_format_args(std::forward<Args>(args)...));
+    std::fwrite(s.data(), 1, s.size(), stdout);
+}
+
+template <class... Args>
+inline void println(std::string_view fmt, Args&&... args) {
+    std::print(fmt, std::forward<Args>(args)...);
+    std::fwrite("\n", 1, 1, stdout);
+}
+
+template <class... Args>
+inline void print(std::FILE* f, std::string_view fmt, Args&&... args) {
+    std::string s = std::vformat(fmt, std::make_format_args(std::forward<Args>(args)...));
+    std::fwrite(s.data(), 1, s.size(), f);
+}
+
+template <class... Args>
+inline void println(std::FILE* f, std::string_view fmt, Args&&... args) {
+    std::print(f, fmt, std::forward<Args>(args)...);
+    std::fwrite("\n", 1, 1, f);
+}
+
+}  // namespace std
+
+  #endif
+#endif
+H
+
+RUN python3 - <<'PY'
+from pathlib import Path
+
+p = Path('/code/languages.py')
+s = p.read_text(encoding='utf-8')
+
+out_lines = []
+for line in s.splitlines(True):
+    if '/usr/bin/g++' in line and '-fmax-errors=3' in line and '-include /code/print_compat.h' not in line:
+        line = line.replace('-fmax-errors=3', '-fmax-errors=3 -include /code/print_compat.h', 1)
+    out_lines.append(line)
+
+p.write_text(''.join(out_lines), encoding='utf-8')
+PY
+
 RUN cat > /code/server.py <<'PY'
 import asyncio
 import json

@@ -16,7 +16,81 @@ const getToken = () => {
   return store.state.user.token || '';
 };
 
-const problem = ref({
+const createDefaultLeetcodeTemplates = () => ({
+  c: { prepend: '', append: '', starter: '' },
+  cpp: { prepend: '', append: '', starter: '' },
+  python3: { prepend: '', append: '', starter: '' },
+});
+
+const normalizeLeetcodeTemplates = (raw) => {
+  const base = createDefaultLeetcodeTemplates();
+  if (!raw || typeof raw !== 'object') return base;
+  ['c', 'cpp', 'python3'].forEach((lang) => {
+    const item = raw[lang] || {};
+    base[lang] = {
+      prepend: String(item.prepend || ''),
+      append: String(item.append || ''),
+      starter: String(item.starter || ''),
+    };
+  });
+  return base;
+};
+const applyLeetcodeTemplatePreset = () => {
+  problem.value.leetcode_templates = {
+    c: {
+      prepend: `#include <stdio.h>
+
+// TODO: 按题目定义函数签名
+int solve(int n) {
+    return 0;
+}
+`,
+      append: `
+int main() {
+    int n;
+    if (scanf("%d", &n) != 1) return 0;
+    printf("%d\\n", solve(n));
+    return 0;
+}
+`,
+      starter: `int solve(int n) {
+    // TODO
+    return 0;
+}
+`,
+    },
+    cpp: {
+      prepend: `#include <bits/stdc++.h>
+using namespace std;
+
+class Solution {
+public:
+    // TODO: 按题目修改参数与返回值
+    int solve(int n) {
+        return 0;
+    }
+};
+`,
+      append: ``,
+      starter: `class Solution {
+public:
+    int solve(int n) {
+        // TODO
+        return 0;
+    }
+};
+`,
+    },
+    python3: {
+      prepend: `class Solution:\n    def solve(self, n):\n        return 0\n`,
+      append: ``,
+      starter: `class Solution:\n    def solve(self, n):\n        # TODO\n        return 0\n`,
+    },
+  };
+  message.success('已填充 LeetCode 默认模板，请按题目函数签名调整。');
+};
+
+const createDefaultProblem = () => ({
   title: '',
   background: '',
   description: '',
@@ -35,15 +109,30 @@ const problem = ref({
   _hide_submissions: false,
   _hide_discussions: false,
   _allow_submit: true,
+  judge_mode: 'acm',
+  leetcode_templates: createDefaultLeetcodeTemplates(),
 });
+
+const normalizeProblem = (raw) => ({
+  ...createDefaultProblem(),
+  ...raw,
+  samples: Array.isArray(raw?.samples) && raw.samples.length ? raw.samples : createDefaultProblem().samples,
+  tags: Array.isArray(raw?.tags) ? raw.tags : [],
+  leetcode_templates: normalizeLeetcodeTemplates(raw?.leetcode_templates),
+});
+
+const problem = ref(createDefaultProblem());
 const fileList = ref([]);
 
 if (id) {
   Axios.get(`/problem/${id}/`)
     .then(res => {
-      res.tags = res.tags.map(tag => tag.id);
-      problem.value = res;
-      fileList.value = res.files.map(file => ({
+      const normalized = normalizeProblem({
+        ...res,
+        tags: (res.tags || []).map(tag => (typeof tag === 'object' ? tag.id : tag)),
+      });
+      problem.value = normalized;
+      fileList.value = (res.files || []).map(file => ({
         name: file,
         status: 'finished',
       }));
@@ -69,9 +158,14 @@ const submit = () => {
   const files = fileList.value
     .filter(file => file.status === 'finished')
     .map(file => file.name);
+  const payload = {
+    ...problem.value,
+    leetcode_templates: normalizeLeetcodeTemplates(problem.value.leetcode_templates),
+    files,
+  };
   let req;
-  if (id) req = Axios.put(`/problem/${id}/`, { ...problem.value, files });
-  else req = Axios.post('/problem/', { ...problem.value, files });
+  if (id) req = Axios.put(`/problem/${id}/`, payload);
+  else req = Axios.post('/problem/', payload);
   req
     .then(res => {
       if (!id) router.push({ name: 'problem_detail', params: { id: res.id } });
@@ -161,9 +255,11 @@ const parseImportText = () => {
   };
 
   const saveCurrentSection = () => {
-    let content = currentContent.join('\n').trim();
-    // 去掉代码块标记 ```
-    content = content.replace(/^```\w*\n?/gm, '').replace(/\n?```$/gm, '').trim();
+    let content = currentContent.join("\n");
+    // 去掉代码块标记 ```（仅移除标记行，不删除正文首行空格）
+    content = content.replace(/^```[^\n]*\n?/gm, "").replace(/\n?```\s*$/gm, "");
+    // 仅清理空行，保留每行前导空格
+    content = content.replace(/^\n+/, "").replace(/\n+$/, "");
     
     if (currentSection === 'background') background = content;
     else if (currentSection === 'description') description = content;
@@ -395,6 +491,59 @@ const parseImportText = () => {
         </n-col>
       </n-row>
     </div>
+    <div>
+      <h2>判题模式</h2>
+      <n-select
+        v-model:value="problem.judge_mode"
+        :options="[{ label: 'ACM（标准输入输出）', value: 'acm' }, { label: 'LeetCode（函数模式）', value: 'leetcode' }]"
+        placeholder="请选择判题模式"
+      />
+      <n-alert v-if="problem.judge_mode === 'leetcode'" type="info" style="margin-top: 12px">
+        LeetCode 模式下，用户提交代码会自动插入“前置代码 + 用户代码 + 后置代码”再判题。
+      </n-alert>
+    </div>
+
+    <div v-if="problem.judge_mode === 'leetcode'">
+      <h2>LeetCode 模板配置</h2>
+      <n-space style="margin-bottom: 12px">
+        <n-button type="primary" secondary @click="applyLeetcodeTemplatePreset">
+          一键填充默认模板
+        </n-button>
+        <n-button @click="problem.leetcode_templates = createDefaultLeetcodeTemplates()">
+          清空模板
+        </n-button>
+      </n-space>
+      <n-alert type="warning" style="margin-bottom: 12px">
+        默认模板仅用于快速开始，请根据题目函数签名和输入输出规则修改。
+      </n-alert>
+      <n-tabs type="line" animated>
+        <n-tab-pane name="tpl-c" tab="C" display-directive="show:lazy">
+          <h3>前置代码（prepend）</h3>
+          <n-input v-model:value="problem.leetcode_templates.c.prepend" type="textarea" :rows="8" />
+          <h3 style="margin-top: 12px">后置代码（append）</h3>
+          <n-input v-model:value="problem.leetcode_templates.c.append" type="textarea" :rows="8" />
+          <h3 style="margin-top: 12px">编辑器默认代码（starter）</h3>
+          <n-input v-model:value="problem.leetcode_templates.c.starter" type="textarea" :rows="6" />
+        </n-tab-pane>
+        <n-tab-pane name="tpl-cpp" tab="C++" display-directive="show:lazy">
+          <h3>前置代码（prepend）</h3>
+          <n-input v-model:value="problem.leetcode_templates.cpp.prepend" type="textarea" :rows="8" />
+          <h3 style="margin-top: 12px">后置代码（append）</h3>
+          <n-input v-model:value="problem.leetcode_templates.cpp.append" type="textarea" :rows="8" />
+          <h3 style="margin-top: 12px">编辑器默认代码（starter）</h3>
+          <n-input v-model:value="problem.leetcode_templates.cpp.starter" type="textarea" :rows="6" />
+        </n-tab-pane>
+        <n-tab-pane name="tpl-py" tab="Python3" display-directive="show:lazy">
+          <h3>前置代码（prepend）</h3>
+          <n-input v-model:value="problem.leetcode_templates.python3.prepend" type="textarea" :rows="8" />
+          <h3 style="margin-top: 12px">后置代码（append）</h3>
+          <n-input v-model:value="problem.leetcode_templates.python3.append" type="textarea" :rows="8" />
+          <h3 style="margin-top: 12px">编辑器默认代码（starter）</h3>
+          <n-input v-model:value="problem.leetcode_templates.python3.starter" type="textarea" :rows="6" />
+        </n-tab-pane>
+      </n-tabs>
+    </div>
+
     <div>
       <h2>其它设置</h2>
       <n-row style="padding: 0 1px">

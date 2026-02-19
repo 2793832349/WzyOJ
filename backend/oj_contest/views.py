@@ -9,6 +9,7 @@ from oj_problem.models import Problem
 from oj_problem.serializers import ProblemBriefSerializer
 from oj_submission.models import LanguageChoices, StatusChoices, Submission
 from oj_submission.tasks import judge
+from oj_submission.judge_source import build_judge_source
 from oj_user.models import User
 from oj_user.serializers import UserBriefSerializer
 from rest_framework.decorators import action
@@ -687,6 +688,7 @@ class ContestViewSet(ModelViewSet):
                 )
                 Problem.objects.filter(id=problem.id).update(submission_count=F('submission_count') + 1)
 
+                judge_source = build_judge_source(submission.problem, submission.language, submission.source)
                 judge.delay(
                     submission.id,
                     submission.problem.test_case.test_case_id,
@@ -694,7 +696,7 @@ class ContestViewSet(ModelViewSet):
                     submission.problem.test_case.test_case_config,
                     submission.problem.test_case.subcheck_config if submission.problem.test_case.use_subcheck else None,
                     submission.language,
-                    submission.source,
+                    judge_source,
                     {
                         'max_cpu_time': submission.problem.time_limit,
                         'max_memory': submission.problem.memory_limit * 1024 * 1024,

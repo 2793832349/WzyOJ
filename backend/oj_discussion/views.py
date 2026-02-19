@@ -16,6 +16,23 @@ from .serializers import DiscussionSerializer, ReplySerializer, ReplyBriefSerial
 from oj_contest.models import Contest
 
 
+def _can_publish_discussion(user):
+    if not (user and user.is_authenticated):
+        return False
+    if user.is_superuser or user.is_staff:
+        return True
+    perms = set(getattr(user, 'permissions', []) or [])
+    return bool(perms.intersection({'problem', 'class'}))
+
+
+def _can_edit_discussion(user, discussion):
+    if not _can_publish_discussion(user):
+        return False
+    if user.is_superuser or user.is_staff:
+        return True
+    return discussion.author_id == getattr(user, 'id', None)
+
+
 class DiscussionPagination(LimitOffsetPagination):
     default_limit = 20
     max_limit = 100
@@ -68,6 +85,8 @@ class DiscussionViewSet(ReadOnlyModelViewSet):
         site_settings = cache.get('site_settings')
         if not site_settings.get('enableDiscussion'):
             return Response({'detail': '讨论功能已关闭'}, status=403)
+        if not _can_publish_discussion(request.user):
+            return Response({'detail': '仅教师可发布讨论'}, status=403)
         data = request.data
         discussion = Discussion(title=data['title'], author=request.user)
         if data.get('related_content_type') == 'problem':
@@ -81,12 +100,72 @@ class DiscussionViewSet(ReadOnlyModelViewSet):
         reply.save()
         return Response({'id': discussion.id}, status=201)
 
+    @action(detail=True, methods=['get', 'post'], url_path='edit')
+    def edit_discussion(self, request, pk=None):
+        site_settings = cache.get('site_settings')
+        if not site_settings.get('enableDiscussion'):
+            return Response({'detail': '讨论功能已关闭'}, status=403)
+
+        discussion = self.get_object()
+        if not _can_edit_discussion(request.user, discussion):
+            return Response({'detail': '无权限修改该讨论'}, status=403)
+
+        first_reply = discussion.replies.order_by('id').first()
+
+        if request.method == 'GET':
+            related_content_type = 'none'
+            related_content_id = None
+            if discussion.related_problem_id:
+                related_content_type = 'problem'
+                related_content_id = discussion.related_problem_id
+            elif discussion.related_contest_id:
+                related_content_type = 'contest'
+                related_content_id = discussion.related_contest_id
+
+            return Response({
+                'id': discussion.id,
+                'title': discussion.title,
+                'related_content_type': related_content_type,
+                'related_content_id': related_content_id,
+                'content': (first_reply.content if first_reply else ''),
+            })
+
+        data = request.data
+        title = str(data.get('title', '') or '').strip()
+        if not title:
+            return Response({'detail': '讨论标题不能为空'}, status=400)
+
+        related_content_type = data.get('related_content_type', 'none')
+        related_content_id = data.get('related_content_id')
+
+        discussion.title = title
+        discussion.related_problem_id = None
+        discussion.related_contest_id = None
+        if related_content_type == 'problem':
+            discussion.related_problem_id = related_content_id
+        elif related_content_type == 'contest':
+            discussion.related_contest_id = related_content_id
+        discussion.save()
+
+        content = str(data.get('content', '') or '')
+        if first_reply:
+            first_reply.content = content
+            first_reply.save()
+        else:
+            Reply.objects.create(content=content,
+                                 author=request.user,
+                                 discussion=discussion)
+
+        return Response({'id': discussion.id}, status=200)
+
     @action(detail=True, methods=['get', 'post'], url_path='reply')
     def get_reply(self, request, pk=None):
         site_settings = cache.get('site_settings')
         if not site_settings.get('enableDiscussion'):
             return Response({'detail': '讨论功能已关闭'}, status=403)
         if request.method == 'POST':
+            if not _can_publish_discussion(request.user):
+                return Response({'detail': '仅教师可发布回复'}, status=403)
             data = request.data
             discussion = self.get_object()
             reply = Reply(content=data['content'],

@@ -39,36 +39,33 @@ Axios.get('/user/info/').then(res => {
       <NaiveMessage />
       <n-notification-provider>
         <n-dialog-provider>
-          <n-layout style="min-height: 100vh">
-          <!-- Header -->
-          <n-layout-header bordered>
-            <AppHeader />
-          </n-layout-header>
+          <n-layout class="app-shell">
+            <n-layout-header bordered class="app-header">
+              <AppHeader />
+            </n-layout-header>
 
-          <!-- Body -->
-          <div style="padding: 30px 7%">
-            <RouterView />
-          </div>
+            <n-layout-content class="app-content">
+              <div class="app-content-inner">
+                <RouterView />
+              </div>
+            </n-layout-content>
 
-          <!-- Footer -->
-          <n-layout-footer
-            style="text-align: center"
-            v-if="config.footer.useFooter"
-          >
-            {{ config.name }} Powered By
-              <n-button text>Wangzyy</n-button>. &nbsp;
-            <a
-              href="https://beian.miit.gov.cn/"
-              target="_blank"
-              style="text-decoration: none"
-              v-if="config.footer.icp"
-            >
-              <n-button text>
-                {{ config.footer.icp }}
-              </n-button>
-            </a>
-          </n-layout-footer>
-        </n-layout>
+            <n-layout-footer class="app-footer" v-if="config.footer.useFooter">
+              {{ config.name }} Powered By
+              <n-button text>Wangzyy</n-button>
+              <span>&nbsp;</span>
+              <a
+                href="https://beian.miit.gov.cn/"
+                target="_blank"
+                style="text-decoration: none"
+                v-if="config.footer.icp"
+              >
+                <n-button text>
+                  {{ config.footer.icp }}
+                </n-button>
+              </a>
+            </n-layout-footer>
+          </n-layout>
         </n-dialog-provider>
       </n-notification-provider>
     </n-message-provider>
@@ -76,18 +73,48 @@ Axios.get('/user/info/').then(res => {
 </template>
 
 <style scoped>
-.n-layout-header {
-  padding: 15px;
+.app-shell {
+  min-height: 100vh;
+  background: transparent;
 }
 
-.n-layout-footer {
-  width: 100%;
-  height: 45px;
-  padding: 10px;
-  position: absolute;
-  bottom: 0;
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 120;
+  padding: 10px 16px;
+  backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.75);
+  border-bottom: 1px solid #dbe5f0;
 }
-.n-layout {
-  padding-bottom: 45px;
+
+.app-content {
+  padding: 24px 0 8px;
+}
+
+.app-content-inner {
+  width: min(1440px, 94vw);
+  margin: 0 auto;
+}
+
+.app-footer {
+  margin-top: 24px;
+  text-align: center;
+  padding: 14px 10px 20px;
+  color: #64748b;
+}
+
+@media (max-width: 768px) {
+  .app-header {
+    padding: 8px 10px;
+  }
+
+  .app-content {
+    padding-top: 14px;
+  }
+
+  .app-content-inner {
+    width: 96vw;
+  }
 }
 </style>

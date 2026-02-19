@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Book, Chapter, Section, UserBookProgress
+from .models import Book, Chapter, Section, UserBookProgress, BookRedeemCode, UserBookPurchase
 from oj_problem.serializers import ProblemBriefSerializer
 
 
@@ -105,7 +105,7 @@ class BookListSerializer(serializers.ModelSerializer):
         model = Book
         fields = [
             'id', 'title', 'description', 'cover', 'difficulty', 'tags',
-            'author_name', 'reader_count', 'is_free',
+            'author_name', 'reader_count', 'is_free', 'is_published',
             'chapter_count', 'section_count', 'user_progress',
             'created_at', 'updated_at'
         ]
@@ -138,7 +138,7 @@ class BookDetailSerializer(serializers.ModelSerializer):
         model = Book
         fields = [
             'id', 'title', 'description', 'cover', 'difficulty', 'tags',
-            'author_name', 'reader_count', 'is_free',
+            'author_name', 'reader_count', 'is_free', 'is_published',
             'chapter_count', 'section_count', 'chapters', 'user_progress',
             'created_at', 'updated_at'
         ]
@@ -238,3 +238,29 @@ class SectionEditSerializer(serializers.ModelSerializer):
             problems = Problem.objects.filter(id__in=problem_ids)
             section.problems.set(problems)
         return section
+
+
+class BookRedeemCodeSerializer(serializers.ModelSerializer):
+    """兑换码序列化器"""
+    book_title = serializers.CharField(source='book.title', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', read_only=True, default='')
+    is_valid = serializers.BooleanField(read_only=True)
+    
+    class Meta:
+        model = BookRedeemCode
+        fields = [
+            'id', 'book', 'book_title', 'code', 'max_uses', 'used_count',
+            'expires_at', 'is_active', 'is_valid', 'note',
+            'created_by', 'created_by_name', 'created_at'
+        ]
+        read_only_fields = ['used_count', 'created_by', 'created_at']
+
+
+class UserBookPurchaseSerializer(serializers.ModelSerializer):
+    """用户购买记录序列化器"""
+    book_title = serializers.CharField(source='book.title', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+    
+    class Meta:
+        model = UserBookPurchase
+        fields = ['id', 'user', 'username', 'book', 'book_title', 'redeem_code', 'purchased_at']

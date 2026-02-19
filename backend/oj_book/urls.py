@@ -1,11 +1,12 @@
 from django.urls import path, include
 from rest_framework.routers import SimpleRouter
-from .views import BookViewSet, ChapterViewSet, SectionViewSet, MyBooksViewSet
+from .views import BookViewSet, ChapterViewSet, SectionViewSet, MyBooksViewSet, BookRedeemCodeViewSet
 
 router = SimpleRouter()
 router.register('books', BookViewSet, basename='book')
 router.register('chapters', ChapterViewSet, basename='chapter')
 router.register('sections', SectionViewSet, basename='section')
 router.register('my-books', MyBooksViewSet, basename='my-books')
+router.register('redeem-codes', BookRedeemCodeViewSet, basename='redeem-code')
 
 urlpatterns = router.urls

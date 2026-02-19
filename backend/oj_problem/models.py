@@ -10,6 +10,31 @@ def get_default_sample():
     return {'input': '', 'output': ''}
 
 
+def get_default_leetcode_templates():
+    return {
+        'c': {
+            'prepend': '',
+            'append': '',
+            'starter': ''
+        },
+        'cpp': {
+            'prepend': '',
+            'append': '',
+            'starter': ''
+        },
+        'python3': {
+            'prepend': '',
+            'append': '',
+            'starter': ''
+        },
+    }
+
+
+class JudgeModeChoices(models.TextChoices):
+    ACM = 'acm', _('ACM')
+    LEETCODE = 'leetcode', _('LeetCode')
+
+
 class Problem(models.Model):
     title = models.CharField(_('title'), max_length=50)
     background = models.TextField(_('background'), blank=True, default='')
@@ -28,7 +53,7 @@ class Problem(models.Model):
                                   blank=True)
     difficulty = models.IntegerField(_('difficulty'),
                                      default=0,
-                                     help_text=_('level: 0 to 7, 0 for unset'))
+                                     help_text=_('level: 0 to 9, corresponds to black iron ~ king'))
     time_limit = models.IntegerField(_('time limit (ms)'), default=1000)  # ms
     memory_limit = models.IntegerField(_('memory limit (MB)'),
                                        default=128)  # MB
@@ -43,6 +68,16 @@ class Problem(models.Model):
     submission_count = models.IntegerField(_('submission count'), default=0)
     accepted_count = models.IntegerField(_('solved count'), default=0)
     files = models.JSONField(_('problem files'), default=list)
+    judge_mode = models.CharField(
+        _('judge mode'),
+        max_length=20,
+        choices=JudgeModeChoices.choices,
+        default=JudgeModeChoices.ACM,
+    )
+    leetcode_templates = models.JSONField(
+        _('leetcode templates'),
+        default=get_default_leetcode_templates,
+    )
 
     @property
     def is_hidden(self):

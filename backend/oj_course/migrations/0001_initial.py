@@ -1,0 +1,116 @@
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+from django.utils import timezone
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ('oj_problem', '0001_initial'),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='Course',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('title', models.CharField(max_length=100, verbose_name='title')),
+                ('description', models.TextField(blank=True, default='', verbose_name='description')),
+                ('is_hidden', models.BooleanField(default=False, verbose_name='hide')),
+                ('is_free', models.BooleanField(default=True, verbose_name='is free')),
+                ('created_at', models.DateTimeField(default=timezone.now, verbose_name='created at')),
+                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='updated at')),
+                ('teacher', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='teaching_courses', to=settings.AUTH_USER_MODEL, verbose_name='teacher')),
+            ],
+            options={
+                'verbose_name': 'course',
+                'verbose_name_plural': 'courses',
+                'ordering': ['-created_at'],
+            },
+        ),
+        migrations.CreateModel(
+            name='CourseChapter',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('title', models.CharField(max_length=100, verbose_name='title')),
+                ('description', models.TextField(blank=True, default='', verbose_name='description')),
+                ('order', models.IntegerField(default=0, verbose_name='order')),
+                ('video', models.FileField(blank=True, null=True, upload_to='course_videos/%Y/%m/')),
+                ('created_at', models.DateTimeField(default=timezone.now, verbose_name='created at')),
+                ('updated_at', models.DateTimeField(auto_now=True, verbose_name='updated at')),
+                ('course', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='chapters', to='oj_course.course', verbose_name='course')),
+            ],
+            options={
+                'verbose_name': 'course chapter',
+                'verbose_name_plural': 'course chapters',
+                'ordering': ['order', 'created_at'],
+            },
+        ),
+        migrations.CreateModel(
+            name='CourseEnrollment',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('joined_at', models.DateTimeField(default=timezone.now, verbose_name='joined at')),
+                ('course', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='enrollments', to='oj_course.course', verbose_name='course')),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='course_enrollments', to=settings.AUTH_USER_MODEL, verbose_name='user')),
+            ],
+            options={
+                'verbose_name': 'course enrollment',
+                'verbose_name_plural': 'course enrollments',
+                'unique_together': {('course', 'user')},
+            },
+        ),
+        migrations.CreateModel(
+            name='CourseRedeemCode',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('code', models.CharField(max_length=32, unique=True, verbose_name='code')),
+                ('max_uses', models.IntegerField(default=1, verbose_name='max uses')),
+                ('used_count', models.IntegerField(default=0, verbose_name='used count')),
+                ('expires_at', models.DateTimeField(blank=True, null=True, verbose_name='expires at')),
+                ('is_active', models.BooleanField(default=True, verbose_name='is active')),
+                ('created_at', models.DateTimeField(default=timezone.now, verbose_name='created at')),
+                ('note', models.CharField(blank=True, default='', max_length=200, verbose_name='note')),
+                ('course', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='redeem_codes', to='oj_course.course')),
+                ('created_by', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='created_course_redeem_codes', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'verbose_name': 'course redeem code',
+                'verbose_name_plural': 'course redeem codes',
+            },
+        ),
+        migrations.CreateModel(
+            name='ChapterProblem',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('order', models.IntegerField(default=0, verbose_name='order')),
+                ('chapter', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='chapter_problems', to='oj_course.coursechapter', verbose_name='chapter')),
+                ('problem', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='course_chapter_refs', to='oj_problem.problem', verbose_name='problem')),
+            ],
+            options={
+                'verbose_name': 'chapter problem',
+                'verbose_name_plural': 'chapter problems',
+                'ordering': ['order'],
+                'unique_together': {('chapter', 'problem')},
+            },
+        ),
+        migrations.CreateModel(
+            name='UserCoursePurchase',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('purchased_at', models.DateTimeField(default=timezone.now, verbose_name='purchased at')),
+                ('course', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='purchases', to='oj_course.course')),
+                ('redeem_code', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='oj_course.courseredeemcode')),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='course_purchases', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'verbose_name': 'user course purchase',
+                'verbose_name_plural': 'user course purchases',
+                'unique_together': {('user', 'course')},
+            },
+        ),
+    ]

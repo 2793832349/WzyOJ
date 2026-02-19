@@ -9,7 +9,8 @@ import { NButton, NDropdown, NInputNumber, NSpace, NPopover } from 'naive-ui';
 import ShowOrEdit from '@/components/ShowOrEdit';
 
 const route = useRoute(),
-  message = useMessage();
+  message = useMessage(),
+  dialog = useDialog();
 const id = route.params.id;
 
 const data = ref({
@@ -84,42 +85,43 @@ const init = () => {
   });
 };
 
-const deleteAllData = async () => {
+const deleteAllData = () => {
   if (!data.value.test_case_config || data.value.test_case_config.length === 0) {
     message.warning('没有测试数据可删除');
     return;
   }
   
-  // 确认删除
-  if (!confirm(`确定要删除所有 ${data.value.test_case_config.length} 个测试点吗？此操作不可撤销！`)) {
-    return;
-  }
-  
-  deletingAll.value = true;
-  try {
-    // 将所有测试点添加到删除列表
-    const allCaseNames = data.value.test_case_config.map(item => item.name);
-    
-    // 提交删除请求
-    await Axios.patch(`/problem/data/${id}/`, {
-      delete_cases: allCaseNames,
-      test_case_config: [],
-      subcheck_config: [],
-      use_spj: data.value.use_spj,
-      use_subcheck: false,
-      spj_source: data.value.spj_source || '',
-      spj_mode: data.value.spj_mode || 'default',
-      allow_download: data.value.allow_download,
-    });
-    
-    message.success('所有测试数据已删除');
-    init(); // 重新加载数据
-  } catch (err) {
-    console.error('Delete all error:', err);
-    message.error('删除失败：' + (err.detail || err.message || '未知错误'));
-  } finally {
-    deletingAll.value = false;
-  }
+  dialog.warning({
+    title: '确认删除',
+    content: `确定要删除所有 ${data.value.test_case_config.length} 个测试点吗？此操作不可撤销！`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      deletingAll.value = true;
+      try {
+        const allCaseNames = data.value.test_case_config.map(item => item.name);
+        
+        await Axios.patch(`/problem/data/${id}/`, {
+          delete_cases: allCaseNames,
+          test_case_config: [],
+          subcheck_config: [],
+          use_spj: data.value.use_spj,
+          use_subcheck: false,
+          spj_source: data.value.spj_source || '',
+          spj_mode: data.value.spj_mode || 'default',
+          allow_download: data.value.allow_download,
+        });
+        
+        message.success('所有测试数据已删除');
+        init();
+      } catch (err) {
+        console.error('Delete all error:', err);
+        message.error('删除失败：' + (err.detail || err.message || '未知错误'));
+      } finally {
+        deletingAll.value = false;
+      }
+    },
+  });
 };
 init();
 

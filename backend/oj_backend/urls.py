@@ -18,6 +18,8 @@ urlpatterns = [
     path('class/', include('oj_class.urls')),
     path('course/', include('oj_course.urls')),
     path('book/', include('oj_book.urls')),
+    path('announcement/', include('oj_announcement.urls')),
+    path('objective/', include('oj_objective.urls')),
     path('site_settings/', SiteSettingsView.as_view()),
     path('admin/', admin.site.urls),
 ]

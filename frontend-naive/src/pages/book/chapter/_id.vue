@@ -42,6 +42,160 @@ const loadSections = async () => {
   }
 };
 
+const selectingProblemId = ref(null);
+const problemOptions = ref([]);
+const loadingProblem = ref(false);
+const problemLabelMap = ref({});
+
+const searchProblem = (search) => {
+  if (!search) {
+    problemOptions.value = [];
+    return;
+  }
+  loadingProblem.value = true;
+  Axios.get('/problem/', { params: { search } })
+    .then((res) => {
+      const results = res?.results ?? res;
+      problemOptions.value = (results || []).map((item) => {
+        const label = `#${item.id} | ${item.title}`;
+        problemLabelMap.value[item.id] = label;
+        return {
+          label,
+          value: item.id,
+        };
+      });
+    })
+    .finally(() => {
+      loadingProblem.value = false;
+    });
+};
+
+const normalizeProblemId = (problemId) => {
+  if (problemId === null || problemId === undefined || problemId === '') return null;
+  const normalized = typeof problemId === 'string' ? Number(problemId) : problemId;
+  return Number.isNaN(normalized) ? problemId : normalized;
+};
+
+const addProblemIdToSection = (problemId) => {
+  const pid = normalizeProblemId(problemId);
+  if (pid === null) return;
+  if (!Array.isArray(sectionForm.value.problem_ids)) sectionForm.value.problem_ids = [];
+  if (sectionForm.value.problem_ids.includes(pid)) return;
+  sectionForm.value.problem_ids.push(pid);
+};
+
+const onSelectProblemForSection = (problemId) => {
+  addProblemIdToSection(problemId);
+  selectingProblemId.value = null;
+};
+
+const removeProblemIdFromSection = (problemId) => {
+  if (!Array.isArray(sectionForm.value.problem_ids)) return;
+  const pid = normalizeProblemId(problemId);
+  if (pid === null) return;
+  const idx = sectionForm.value.problem_ids.indexOf(pid);
+  if (idx === -1) return;
+  sectionForm.value.problem_ids.splice(idx, 1);
+};
+
+const placeholderProblemId = ref(null);
+const placeholderVideoUrl = ref('');
+
+const placeholderProblemOptions = computed(() => {
+  const ids = Array.isArray(sectionForm.value.problem_ids) ? sectionForm.value.problem_ids : [];
+  return ids.map((pid) => ({
+    label: getProblemLabel(pid),
+    value: pid,
+  }));
+});
+
+const getProblemPlaceholder = (problemId) => {
+  const pid = normalizeProblemId(problemId);
+  if (pid === null) return '';
+  return `[[problem:${pid}]]`;
+};
+
+const getVideoPlaceholder = (url) => {
+  const raw = (url ?? '').toString().trim();
+  if (!raw) return '';
+  return `[[video:${raw}]]`;
+};
+
+const copyText = (text, event = undefined) => {
+  if (event) event.stopPropagation();
+  const input = document.createElement('textarea');
+  input.value = text;
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand('copy');
+  document.body.removeChild(input);
+  message.success('复制成功');
+};
+
+const copyProblemPlaceholder = (problemId, event = undefined) => {
+  const placeholder = getProblemPlaceholder(problemId);
+  if (!placeholder) {
+    message.warning('请选择题目');
+    return;
+  }
+  copyText(placeholder, event);
+};
+
+const insertProblemPlaceholder = (problemId) => {
+  const placeholder = getProblemPlaceholder(problemId);
+  if (!placeholder) {
+    message.warning('请选择题目');
+    return;
+  }
+  const rawContent = (sectionForm.value.content ?? '').toString();
+  if (!rawContent.trim()) {
+    sectionForm.value.content = `${placeholder}\n\n`;
+    message.success('已插入占位符');
+    return;
+  }
+
+  let content = rawContent;
+  if (!content.endsWith('\n')) content += '\n';
+  if (!content.endsWith('\n\n')) content += '\n';
+  sectionForm.value.content = `${content}${placeholder}\n\n`;
+  message.success('已插入占位符');
+};
+
+const copyVideoPlaceholder = (url, event = undefined) => {
+  const placeholder = getVideoPlaceholder(url);
+  if (!placeholder) {
+    message.warning('请输入视频链接');
+    return;
+  }
+  copyText(placeholder, event);
+};
+
+const insertVideoPlaceholder = (url) => {
+  const placeholder = getVideoPlaceholder(url);
+  if (!placeholder) {
+    message.warning('请输入视频链接');
+    return;
+  }
+  const rawContent = (sectionForm.value.content ?? '').toString();
+  if (!rawContent.trim()) {
+    sectionForm.value.content = `${placeholder}\n\n`;
+    message.success('已插入占位符');
+    return;
+  }
+
+  let content = rawContent;
+  if (!content.endsWith('\n')) content += '\n';
+  if (!content.endsWith('\n\n')) content += '\n';
+  sectionForm.value.content = `${content}${placeholder}\n\n`;
+  message.success('已插入占位符');
+};
+
+const getProblemLabel = (problemId) => {
+  const pid = normalizeProblemId(problemId);
+  if (pid === null) return '';
+  return problemLabelMap.value?.[pid] ?? `#${pid}`;
+};
+
 // 小节管理
 const showSectionModal = ref(false);
 const editingSection = ref(null);
@@ -50,6 +204,7 @@ const sectionForm = ref({
   content_type: 'article',
   content: '',
   video_url: '',
+  problem_ids: [],
   estimated_time: 5,
   order: 0,
 });
@@ -61,22 +216,33 @@ const openAddSection = () => {
     content_type: 'article',
     content: '',
     video_url: '',
+    problem_ids: [],
     estimated_time: 5,
     order: sections.value.length + 1,
   };
+  placeholderProblemId.value = null;
+  placeholderVideoUrl.value = '';
   showSectionModal.value = true;
 };
 
 const openEditSection = (section) => {
   editingSection.value = section;
+  const ps = Array.isArray(section?.problems) ? section.problems : [];
+  ps.forEach((p) => {
+    if (!p?.id && p?.id !== 0) return;
+    problemLabelMap.value[p.id] = `#${p.id} | ${p.title}`;
+  });
   sectionForm.value = {
     title: section.title,
     content_type: section.content_type,
     content: section.content || '',
     video_url: section.video_url || '',
+    problem_ids: ps.map((p) => p.id),
     estimated_time: section.estimated_time,
     order: section.order,
   };
+  placeholderProblemId.value = ps.length ? ps[0].id : null;
+  placeholderVideoUrl.value = section.video_url || '';
   showSectionModal.value = true;
 };
 
@@ -188,8 +354,88 @@ onMounted(() => {
         <n-form-item v-if="sectionForm.content_type === 'video'" label="视频链接">
           <n-input v-model:value="sectionForm.video_url" placeholder="请输入视频链接" />
         </n-form-item>
-        
-        <n-form-item label="内容" v-if="sectionForm.content_type !== 'problem'">
+
+        <n-form-item label="视频占位符">
+          <n-space align="center" :wrap-item="false" style="width: 100%">
+            <n-input
+              v-model:value="placeholderVideoUrl"
+              clearable
+              placeholder="请输入视频链接"
+              style="width: 260px"
+            />
+            <n-input
+              :value="getVideoPlaceholder(placeholderVideoUrl)"
+              placeholder="[[video:URL]]"
+              readonly
+            />
+            <n-button size="small" @click="(e) => copyVideoPlaceholder(placeholderVideoUrl, e)">
+              复制
+            </n-button>
+            <n-button size="small" @click="() => insertVideoPlaceholder(placeholderVideoUrl)">
+              插入到末尾
+            </n-button>
+          </n-space>
+        </n-form-item>
+
+        <n-form-item label="关联题目">
+          <n-space vertical style="width: 100%">
+            <n-select
+              v-model:value="selectingProblemId"
+              filterable
+              remote
+              clearable
+              placeholder="搜索题目（标题或 ID）"
+              :options="problemOptions"
+              :loading="loadingProblem"
+              @search="searchProblem"
+              @update:value="onSelectProblemForSection"
+            />
+            <n-space wrap>
+              <n-tag
+                v-for="pid in (sectionForm.problem_ids || [])"
+                :key="pid"
+                closable
+                @close="removeProblemIdFromSection(pid)"
+              >
+                {{ getProblemLabel(pid) }}
+              </n-tag>
+            </n-space>
+          </n-space>
+        </n-form-item>
+
+        <n-form-item
+          label="题目占位符"
+          v-if="(sectionForm.problem_ids || []).length"
+        >
+          <n-space align="center" :wrap-item="false" style="width: 100%">
+            <n-select
+              v-model:value="placeholderProblemId"
+              clearable
+              placeholder="选择题目"
+              :options="placeholderProblemOptions"
+              style="width: 260px"
+            />
+            <n-input
+              :value="getProblemPlaceholder(placeholderProblemId)"
+              placeholder="[[problem:ID]]"
+              readonly
+            />
+            <n-button
+              size="small"
+              @click="(e) => copyProblemPlaceholder(placeholderProblemId, e)"
+            >
+              复制
+            </n-button>
+            <n-button
+              size="small"
+              @click="() => insertProblemPlaceholder(placeholderProblemId)"
+            >
+              插入到末尾
+            </n-button>
+          </n-space>
+        </n-form-item>
+
+        <n-form-item label="内容">
           <div style="width: 100%">
             <MdEditor v-model:content="sectionForm.content" />
           </div>

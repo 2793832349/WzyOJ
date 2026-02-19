@@ -131,6 +131,95 @@ const routes = [
       permission: 'problem',
     },
   },
+
+  {
+    path: '/objective/',
+    name: 'objective_list',
+    component: () => import('@/pages/objective/index.vue'),
+    meta: {
+      title: '客观题',
+      cate: 'objective',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/objective/:id(\\d+)/',
+    name: 'objective_detail',
+    component: () => import('@/pages/objective/_id.vue'),
+    meta: {
+      title: '客观题详情 #{id}',
+      cate: 'objective',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/objective/create/',
+    name: 'objective_create',
+    component: () => import('@/pages/objective/edit.vue'),
+    meta: {
+      title: '创建客观题',
+      cate: 'objective',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'problem',
+    },
+  },
+  {
+    path: '/objective/:id(\\d+)/edit/',
+    name: 'objective_edit',
+    component: () => import('@/pages/objective/edit.vue'),
+    meta: {
+      title: '编辑客观题 #{id}',
+      cate: 'objective',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'problem',
+    },
+  },
+  {
+    path: '/objective/paper/',
+    name: 'objective_paper_list',
+    component: () => import('@/pages/objective/paper_index.vue'),
+    meta: {
+      title: '客观题套卷',
+      cate: 'objective',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/objective/paper/create/',
+    name: 'objective_paper_create',
+    component: () => import('@/pages/objective/paper_create.vue'),
+    meta: {
+      title: '创建客观题套卷',
+      cate: 'objective',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'problem',
+    },
+  },
+  {
+    path: '/objective/paper/:id(\\d+)/edit/',
+    name: 'objective_paper_edit',
+    component: () => import('@/pages/objective/paper_create.vue'),
+    meta: {
+      title: '编辑客观题套卷 #{id}',
+      cate: 'objective',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'problem',
+    },
+  },
+  {
+    path: '/objective/paper/:id/',
+    name: 'objective_paper_detail',
+    component: () => import('@/pages/objective/paper_id.vue'),
+    meta: {
+      title: '客观题套卷详情 #{id}',
+      cate: 'objective',
+      requiredLogin: true,
+    },
+  },
   {
     path: '/contest/',
     name: 'contest_list',
@@ -351,6 +440,27 @@ const routes = [
       title: '创建讨论',
       cate: 'discussion',
       requiredLogin: true,
+    },
+  },
+  {
+    path: '/discussion/:id/edit/',
+    name: 'discussion_edit',
+    component: () => import('@/pages/discussion/edit.vue'),
+    meta: {
+      title: '编辑讨论 #{id}',
+      cate: 'discussion',
+      requiredLogin: true,
+    },
+  },
+  {
+    path: '/announcement/manage/',
+    name: 'announcement_manage',
+    component: () => import('@/pages/announcement/manage.vue'),
+    meta: {
+      title: '公告管理',
+      requiredLogin: true,
+      requiredAdmin: true,
+      permission: 'site_setting',
     },
   },
   {

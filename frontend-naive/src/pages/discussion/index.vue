@@ -1,10 +1,11 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import Axios from '@/plugins/axios';
 import { AddOutline } from '@vicons/ionicons5';
 import DiscussionTable from '@/components/DiscussionTable.vue';
 import { useRoute } from 'vue-router';
 import router from '@/router';
+import store from '@/store';
 import { _writeSearchToQuery } from '@/plugins/utils';
 
 const route = useRoute();
@@ -18,6 +19,17 @@ const pagination = ref({ pageSize: 20, page: 1, count: 0 }),
   }),
   data = ref([]),
   loading = ref(false);
+const canPublishDiscussion = computed(() => {
+  const user = store.state.user || {};
+  const perms = user.permissions || [];
+  return Boolean(
+    user.is_staff
+    || user.is_superuser
+    || perms.includes('problem')
+    || perms.includes('class')
+  );
+});
+
 const writeSearchToQuery = _writeSearchToQuery(
   search.value,
   pagination.value,
@@ -102,6 +114,7 @@ const createDiscussion = () => {
         </n-form>
       </div>
       <n-button
+        v-if="canPublishDiscussion"
         style="float: right; margin-top: 25px; margin-right: 10px"
         type="primary"
         @click="createDiscussion"

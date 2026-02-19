@@ -11,6 +11,7 @@ from rest_framework import serializers
 
 from .models import StatusChoices, Submission
 from .tasks import judge
+from .judge_source import build_judge_source
 
 
 def _oi_feedback_hidden(submission: Submission, now) -> bool:
@@ -91,6 +92,7 @@ class SubmissionDetailSerializer(serializers.ModelSerializer):
                 _('Problem submit is not allowed'))
         validated_data['problem'] = problem
         submission = Submission.objects.create(**validated_data)
+        judge_source = build_judge_source(submission.problem, submission.language, submission.source)
         judge.delay(
             submission.id, submission.problem.test_case.test_case_id,
             submission.problem.test_case.spj_id
@@ -98,7 +100,7 @@ class SubmissionDetailSerializer(serializers.ModelSerializer):
             submission.problem.test_case.test_case_config,
             submission.problem.test_case.subcheck_config
             if submission.problem.test_case.use_subcheck else None,
-            submission.language, submission.source, {
+            submission.language, judge_source, {
                 'max_cpu_time': submission.problem.time_limit,
                 'max_memory': submission.problem.memory_limit * 1024 * 1024,
             })

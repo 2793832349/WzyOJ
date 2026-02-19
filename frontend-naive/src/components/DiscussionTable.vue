@@ -1,7 +1,8 @@
 <script setup>
-import { h } from 'vue';
-import { NButton, NIcon, NTag, NTime } from 'naive-ui';
+import { computed, h } from 'vue';
+import { NButton, NTime } from 'naive-ui';
 import { RouterLink } from 'vue-router';
+import store from '@/store';
 
 defineProps({
   data: {
@@ -13,6 +14,23 @@ defineProps({
     default: false,
   },
 });
+
+const canPublishDiscussion = computed(() => {
+  const user = store.state.user || {};
+  const perms = user.permissions || [];
+  return Boolean(
+    user.is_staff
+    || user.is_superuser
+    || perms.includes('problem')
+    || perms.includes('class')
+  );
+});
+
+const canEditRow = (row) => {
+  const user = store.state.user || {};
+  if (user.is_staff || user.is_superuser) return true;
+  return canPublishDiscussion.value && user.id === row?.author?.id;
+};
 
 const columns = [
   {
@@ -138,6 +156,28 @@ const columns = [
       return h(NTime, {
         time: new Date(row.latest_reply_time),
       });
+    },
+  },
+  {
+    title: '操作',
+    width: 92,
+    render(row) {
+      if (!canEditRow(row)) return '-';
+      return h(
+        RouterLink,
+        { to: { name: 'discussion_edit', params: { id: row.id } } },
+        {
+          default: () =>
+            h(
+              NButton,
+              {
+                text: true,
+                size: 'small',
+              },
+              { default: () => '编辑' }
+            ),
+        }
+      );
     },
   },
 ];

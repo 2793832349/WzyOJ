@@ -1,74 +1,171 @@
 <template>
-  <div v-if="classInfo">
-    <n-space justify="space-between" align="center" style="margin-bottom: 16px">
-      <div>
-        <h1 style="margin: 0">{{ classInfo.title }}</h1>
-        <p style="margin: 8px 0 0 0; color: #666">{{ classInfo.description }}</p>
+  <div v-if="classInfo" class="class-page">
+    <section class="class-hero">
+      <div class="class-hero__glow"></div>
+      <div class="class-hero__content">
+        <div class="class-hero__info">
+          <h1 class="class-title">{{ classInfo.title }}</h1>
+          <p class="class-description">{{ classInfo.description || '暂无班级简介' }}</p>
+          <n-space size="small" class="class-stats" wrap>
+            <n-tag size="small" :bordered="false" type="success">{{ isTeacher ? '教师视角' : '学生视角' }}</n-tag>
+            <n-tag size="small" :bordered="false" type="default">作业 {{ assignmentStats.total }}</n-tag>
+            <n-tag size="small" :bordered="false" type="info">进行中 {{ assignmentStats.active }}</n-tag>
+            <n-tag size="small" :bordered="false" type="warning">已截止 {{ assignmentStats.expired }}</n-tag>
+            <n-tag v-if="isTeacher && assignmentStats.hidden > 0" size="small" :bordered="false" type="error">
+              隐藏 {{ assignmentStats.hidden }}
+            </n-tag>
+          </n-space>
+        </div>
+        <n-space class="class-hero__actions">
+          <n-button v-if="isTeacher" type="primary" @click="startLive" :loading="startingLive">
+            <template #icon>
+              <n-icon><VideocamOutline /></n-icon>
+            </template>
+            开启直播课堂
+          </n-button>
+          <n-button v-else type="primary" @click="enterLive">
+            <template #icon>
+              <n-icon><VideocamOutline /></n-icon>
+            </template>
+            进入直播课堂
+          </n-button>
+        </n-space>
       </div>
-      <n-space>
-        <n-button v-if="isTeacher" type="primary" @click="startLive" :loading="startingLive">
-          <template #icon>
-            <n-icon><VideocamOutline /></n-icon>
-          </template>
-          开启直播课堂
-        </n-button>
-        <n-button v-else type="primary" @click="enterLive">
-          <template #icon>
-            <n-icon><VideocamOutline /></n-icon>
-          </template>
-          进入直播课堂
-        </n-button>
-      </n-space>
-    </n-space>
+    </section>
 
-    <n-tabs type="line" animated>
+    <n-tabs type="line" animated class="class-tabs">
+      <n-tab-pane name="dashboard" tab="学情看板" v-if="isTeacher">
+        <n-space vertical size="large" class="dashboard-pane">
+          <div class="assignment-toolbar">
+            <div class="assignment-toolbar__meta">
+              <h3 class="assignment-toolbar__title">学情看板</h3>
+              <p class="assignment-toolbar__hint">聚焦班级整体进度、近期作业完成度和当前卡点。</p>
+            </div>
+            <n-button @click="fetchDashboard" :loading="dashboardLoading">刷新看板</n-button>
+          </div>
+
+          <n-spin :show="dashboardLoading">
+            <n-grid :x-gap="12" :y-gap="12" cols="1 s:2 m:4" responsive="screen">
+              <n-gi v-for="card in dashboardOverviewCards" :key="card.key">
+                <n-card size="small" :bordered="false" class="dashboard-overview-card">
+                  <div class="dashboard-overview-card__label">{{ card.label }}</div>
+                  <div class="dashboard-overview-card__value">{{ card.value }}</div>
+                </n-card>
+              </n-gi>
+            </n-grid>
+
+            <n-grid :x-gap="12" :y-gap="12" cols="1 m:2" responsive="screen" style="margin-top: 12px">
+              <n-gi>
+                <n-card size="small" :bordered="false" class="dashboard-panel">
+                  <template #header>近期作业完成</template>
+                  <n-empty v-if="dashboardData.recent_assignments.length === 0" description="暂无作业数据" />
+                  <n-space v-else vertical size="medium">
+                    <div v-for="item in dashboardData.recent_assignments" :key="item.id" class="dashboard-assignment-item">
+                      <div class="dashboard-assignment-item__top">
+                        <div class="dashboard-assignment-item__title">{{ item.title }}</div>
+                        <n-tag :type="item.is_expired ? 'error' : 'success'" size="small">
+                          {{ item.is_expired ? '已截止' : '进行中' }}
+                        </n-tag>
+                      </div>
+                      <div class="dashboard-assignment-item__meta">
+                        完成题目 {{ item.solved_problem_count || 0 }}/{{ item.total_problem_count || 0 }} ·
+                        完成学生 {{ item.completed_students }}/{{ dashboardData.overview.student_count || 0 }} ·
+                        参与 {{ item.participating_students }}/{{ dashboardData.overview.student_count || 0 }} ·
+                        题目 {{ item.problem_count }}
+                      </div>
+                      <n-progress type="line" :show-indicator="false" :percentage="getAssignmentProgress(item)" />
+                    </div>
+                  </n-space>
+                </n-card>
+              </n-gi>
+
+              <n-gi>
+                <n-card size="small" :bordered="false" class="dashboard-panel">
+                  <template #header>高卡点题目</template>
+                  <n-empty v-if="dashboardData.stuck_problems.length === 0" description="暂无卡点题目" />
+                  <n-space v-else vertical size="small">
+                    <div v-for="item in dashboardData.stuck_problems" :key="item.problem_id" class="dashboard-problem-item">
+                      <div class="dashboard-problem-item__title">
+                        <a :href="`/problem/${item.problem_id}/`" target="_blank">{{ item.title }}</a>
+                      </div>
+                      <div class="dashboard-problem-item__meta">
+                        通过率 {{ formatPercent(item.acceptance_rate) }} · 尝试 {{ item.attempted_students }} 人 · 错误提交 {{ item.wrong_submissions }}
+                      </div>
+                    </div>
+                  </n-space>
+                </n-card>
+              </n-gi>
+            </n-grid>
+
+            <n-card size="small" :bordered="false" class="dashboard-panel" style="margin-top: 12px">
+              <template #header>重点关注学生（按当前作业完成率）</template>
+              <n-empty v-if="dashboardData.at_risk_students.length === 0" description="暂无需要关注的学生" />
+              <n-space v-else vertical size="small">
+                <div v-for="item in dashboardData.at_risk_students" :key="item.user_id" class="dashboard-student-item">
+                  <div class="dashboard-student-item__name">{{ item.real_name }}</div>
+                  <div class="dashboard-student-item__meta">
+                    完成 {{ item.solved_count }}/{{ item.total_active_problems }} · 尝试 {{ item.attempted_count }} 题 · 完成率 {{ formatPercent(item.completion_rate) }}
+                  </div>
+                </div>
+              </n-space>
+            </n-card>
+          </n-spin>
+        </n-space>
+      </n-tab-pane>
+
       <!-- 作业列表 -->
       <n-tab-pane name="assignments" tab="作业">
-        <n-space vertical>
-          <n-button
-            v-if="isTeacher"
-            type="primary"
-            @click="showCreateAssignmentModal = true"
-          >
-            创建作业
-          </n-button>
-          
-          <n-list>
-            <n-list-item v-for="assignment in assignments" :key="assignment.id">
-              <n-thing>
-                <template #header>
-                  <n-space align="center">
-                    {{ assignment.title }}
-                    <n-tag v-if="assignment.is_expired" type="error">已截止</n-tag>
-                    <n-tag v-if="assignment.is_hidden" type="warning">隐藏</n-tag>
+        <n-space vertical size="large" class="assignment-pane">
+          <div class="assignment-toolbar">
+            <div class="assignment-toolbar__meta">
+              <h3 class="assignment-toolbar__title">班级作业</h3>
+              <p class="assignment-toolbar__hint">按截止时间管理任务，支持直接查看成绩、编辑与回收。</p>
+            </div>
+            <n-button
+              v-if="isTeacher"
+              type="primary"
+              @click="showCreateAssignmentModal = true"
+            >
+              创建作业
+            </n-button>
+          </div>
+
+          <div v-if="assignments.length > 0" class="assignment-grid">
+            <n-card v-for="assignment in assignments" :key="assignment.id" size="small" :bordered="false" class="assignment-card">
+              <template #header>
+                <div class="assignment-card__header">
+                  <div class="assignment-card__title">{{ assignment.title }}</div>
+                  <n-space size="small">
+                    <n-tag v-if="assignment.is_expired" type="error" size="small">已截止</n-tag>
+                    <n-tag v-if="assignment.is_hidden" type="warning" size="small">隐藏</n-tag>
                   </n-space>
-                </template>
-                <template #description>
-                  <span v-if="assignment.deadline">
-                    截止时间：{{ formatDate(assignment.deadline) }}
-                  </span>
-                </template>
-                {{ assignment.description || '暂无描述' }}
-                <template #action>
-                  <n-space>
-                    <n-button size="small" type="primary" @click="viewAssignmentDetail(assignment)">
-                      查看作业
-                    </n-button>
-                    <n-button v-if="isTeacher" size="small" @click="viewAssignmentGrades(assignment)">
-                      成绩表
-                    </n-button>
-                    <n-button v-if="isTeacher" size="small" @click="openEditAssignmentModal(assignment)">
-                      编辑
-                    </n-button>
-                    <n-button v-if="isTeacher" size="small" type="error" @click="deleteAssignment(assignment.id)">
-                      删除
-                    </n-button>
-                  </n-space>
-                </template>
-              </n-thing>
-            </n-list-item>
-            <n-empty v-if="assignments.length === 0" description="暂无作业" />
-          </n-list>
+                </div>
+              </template>
+
+              <n-space vertical size="small">
+                <div class="assignment-card__deadline">
+                  <span class="label">截止：</span>
+                  <span>{{ assignment.deadline ? formatDate(assignment.deadline) : '无限制' }}</span>
+                </div>
+                <p class="assignment-card__description">{{ assignment.description || '暂无描述' }}</p>
+                <n-space size="small" wrap class="assignment-card__actions">
+                  <n-button size="small" type="primary" @click="viewAssignmentDetail(assignment)">
+                    查看作业
+                  </n-button>
+                  <n-button v-if="isTeacher" size="small" @click="viewAssignmentGrades(assignment)">
+                    成绩表
+                  </n-button>
+                  <n-button v-if="isTeacher" size="small" @click="openEditAssignmentModal(assignment)">
+                    编辑
+                  </n-button>
+                  <n-button v-if="isTeacher" size="small" type="error" @click="deleteAssignment(assignment.id)">
+                    删除
+                  </n-button>
+                </n-space>
+              </n-space>
+            </n-card>
+          </div>
+          <n-empty v-else description="暂无作业" class="assignment-empty" />
         </n-space>
       </n-tab-pane>
 
@@ -119,6 +216,14 @@
                       @click="toggleMemberRole(student)"
                     >
                       切换为{{ student.role === 'teacher' ? '学生' : '教师' }}
+                    </n-button>
+                    <n-button
+                      v-if="student.role === 'student'"
+                      size="small"
+                      secondary
+                      @click="openStudentFeedback(student)"
+                    >
+                      学情反馈
                     </n-button>
                     <n-button size="small" type="error" @click="removeStudent(student.user.id)">
                       移除
@@ -178,13 +283,31 @@
                       {{ index + 1 }}. {{ problem.title }}
                     </template>
                     <template #header-extra>
-                      <n-button 
-                        size="small" 
-                        type="error" 
-                        @click="removeSelectedProblemForAssignment(index)"
-                      >
-                        移除
-                      </n-button>
+                      <n-space size="small">
+                        <n-button
+                          size="small"
+                          secondary
+                          :disabled="index === 0"
+                          @click="moveSelectedProblemForAssignment(index, -1)"
+                        >
+                          上移
+                        </n-button>
+                        <n-button
+                          size="small"
+                          secondary
+                          :disabled="index === selectedProblemsForAssignment.length - 1"
+                          @click="moveSelectedProblemForAssignment(index, 1)"
+                        >
+                          下移
+                        </n-button>
+                        <n-button
+                          size="small"
+                          type="error"
+                          @click="removeSelectedProblemForAssignment(index)"
+                        >
+                          移除
+                        </n-button>
+                      </n-space>
                     </template>
                   </n-thing>
                 </n-list-item>
@@ -305,14 +428,17 @@
           
           <n-divider />
           
-          <n-data-table
-            :columns="gradesColumns"
-            :data="gradesData"
-            :loading="loadingGrades"
-            :pagination="{ pageSize: 50 }"
-            :scroll-x="800"
-            striped
-          />
+          <n-scrollbar x-scrollable>
+            <n-data-table
+              :columns="gradesColumns"
+              :data="gradesData"
+              :loading="loadingGrades"
+              :pagination="{ pageSize: 50 }"
+              :scroll-x="800"
+              max-height="500"
+              striped
+            />
+          </n-scrollbar>
         </n-space>
       </n-card>
       <template #action>
@@ -556,7 +682,7 @@
             {{ viewingProblem.memory_limit }} MB
           </n-descriptions-item>
           <n-descriptions-item label="难度" v-if="viewingProblem.difficulty">
-            {{ viewingProblem.difficulty }}
+            {{ difficultyMap[viewingProblem.difficulty || 0] || difficultyMap[0] }}
           </n-descriptions-item>
           <n-descriptions-item label="题目描述" :span="2">
             <div style="white-space: pre-wrap">{{ viewingProblem.description }}</div>
@@ -593,6 +719,82 @@
         </n-space>
       </template>
     </n-modal>
+
+    <n-modal
+      v-model:show="showStudentFeedbackModal"
+      preset="dialog"
+      title="学生学情反馈"
+      style="width: 920px"
+    >
+      <n-spin :show="studentFeedbackLoading">
+        <n-space vertical size="medium" v-if="studentFeedback.student">
+          <n-alert type="info" :show-icon="false">
+            <div class="student-feedback-summary">{{ studentFeedback.parent_summary }}</div>
+          </n-alert>
+
+          <n-space size="small" wrap>
+            <n-tag type="success" size="small">完成 {{ studentFeedback.overview.solved_problem_count || 0 }}/{{ studentFeedback.overview.tracked_problem_count || 0 }}</n-tag>
+            <n-tag type="info" size="small">进行中 {{ studentFeedback.overview.active_solved_problem_count || 0 }}/{{ studentFeedback.overview.active_problem_count || 0 }}</n-tag>
+            <n-tag type="warning" size="small">近7天提交 {{ studentFeedback.overview.recent_7d_submissions || 0 }} 次</n-tag>
+            <n-tag size="small">最后提交 {{ studentFeedback.overview.last_submit_time ? formatDate(studentFeedback.overview.last_submit_time) : '暂无' }}</n-tag>
+          </n-space>
+
+          <n-grid :x-gap="12" :y-gap="12" cols="1 m:2" responsive="screen">
+            <n-gi>
+              <n-card size="small" :bordered="false" class="student-feedback-card">
+                <template #header>作业完成情况</template>
+                <n-empty v-if="studentFeedback.assignments.length === 0" description="暂无作业数据" />
+                <n-space v-else vertical size="small">
+                  <div
+                    v-for="item in studentFeedback.assignments.slice(0, 6)"
+                    :key="item.id"
+                    class="student-feedback-assignment"
+                  >
+                    <div class="student-feedback-assignment__title">{{ item.title }}</div>
+                    <div class="student-feedback-line">
+                      完成 {{ item.solved_count || 0 }}/{{ item.problem_count || 0 }} · 尝试 {{ item.attempted_count || 0 }} · 完成率 {{ formatPercent(item.completion_rate) }}
+                    </div>
+                  </div>
+                </n-space>
+              </n-card>
+            </n-gi>
+            <n-gi>
+              <n-card size="small" :bordered="false" class="student-feedback-card">
+                <template #header>重点关注题目</template>
+                <n-empty v-if="studentFeedback.weak_problems.length === 0" description="暂无明显薄弱题目" />
+                <n-space v-else vertical size="small">
+                  <div
+                    v-for="item in studentFeedback.weak_problems.slice(0, 6)"
+                    :key="item.problem_id"
+                    class="student-feedback-assignment"
+                  >
+                    <div class="student-feedback-assignment__title">
+                      <a :href="`/problem/${item.problem_id}/`" target="_blank">{{ item.title }}</a>
+                    </div>
+                    <div class="student-feedback-line">
+                      错误提交 {{ item.wrong_submissions || 0 }} 次 · 最近状态 {{ item.last_status || '未知' }}
+                    </div>
+                  </div>
+                </n-space>
+              </n-card>
+            </n-gi>
+          </n-grid>
+        </n-space>
+      </n-spin>
+
+      <template #action>
+        <n-space>
+          <n-button @click="showStudentFeedbackModal = false">关闭</n-button>
+          <n-button
+            type="primary"
+            @click="copyStudentFeedbackText"
+            :disabled="!studentFeedback.parent_summary"
+          >
+            复制家长反馈
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 
@@ -602,7 +804,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useMessage, NButton, NSpace, NTag, NTooltip, NRadioGroup, NRadio, NIcon } from 'naive-ui';
 import { Search as SearchIcon, VideocamOutline } from '@vicons/ionicons5';
 import Axios from '@/plugins/axios';
-import { difficultyOptions, difficulty as difficultyMap, difficultyColor } from '@/plugins/consts';
+import { difficultyOptions, difficulty as difficultyMap, difficultyBadgeStyle } from '@/plugins/consts';
 import store from '@/store';
 
 const route = useRoute();
@@ -617,6 +819,50 @@ const problems = ref([]);
 const students = ref([]);
 const mainProblems = ref([]);
 
+const createDefaultDashboardData = () => ({
+  overview: {
+    student_count: 0,
+    assignment_count: 0,
+    active_assignment_count: 0,
+    expired_assignment_count: 0,
+    tracked_problem_count: 0,
+    active_problem_count: 0,
+    total_submissions: 0,
+    last_7d_submissions: 0,
+  },
+  recent_assignments: [],
+  stuck_problems: [],
+  at_risk_students: [],
+  generated_at: null,
+});
+
+const createDefaultStudentFeedback = () => ({
+  student: null,
+  overview: {
+    assignment_count: 0,
+    active_assignment_count: 0,
+    tracked_problem_count: 0,
+    attempted_problem_count: 0,
+    solved_problem_count: 0,
+    completion_rate: 0,
+    active_problem_count: 0,
+    active_solved_problem_count: 0,
+    active_completion_rate: 0,
+    submission_count: 0,
+    recent_7d_submissions: 0,
+    last_submit_time: null,
+  },
+  assignments: [],
+  weak_problems: [],
+  parent_summary: '',
+  generated_at: null,
+});
+
+const dashboardLoading = ref(false);
+const dashboardData = ref(createDefaultDashboardData());
+const studentFeedbackLoading = ref(false);
+const studentFeedback = ref(createDefaultStudentFeedback());
+
 // 模态框控制
 const showCreateAssignmentModal = ref(false);
 const showReferenceProblemModal = ref(false);
@@ -626,6 +872,7 @@ const showAddStudentModal = ref(false);
 const showSelectProblemForAssignment = ref(false);
 const showAssignmentDetailModal = ref(false);
 const showAssignmentGradesModal = ref(false);
+const showStudentFeedbackModal = ref(false);
 
 // 加载状态
 const loadingMainProblems = ref(false);
@@ -693,6 +940,46 @@ const viewingProblem = ref(null);
 const isTeacher = computed(() => {
   return classInfo.value && classInfo.value.user_role === 'teacher';
 });
+
+const assignmentStats = computed(() => {
+  const total = assignments.value.length;
+  const expired = assignments.value.filter(item => item.is_expired).length;
+  const hidden = assignments.value.filter(item => item.is_hidden).length;
+  return {
+    total,
+    expired,
+    hidden,
+    active: Math.max(total - expired, 0),
+  };
+});
+
+const dashboardOverviewCards = computed(() => {
+  const overview = dashboardData.value.overview || {};
+  return [
+    { key: "student_count", label: "班级学生", value: overview.student_count || 0 },
+    { key: "assignment_count", label: "作业总数", value: overview.assignment_count || 0 },
+    { key: "active_assignment_count", label: "进行中作业", value: overview.active_assignment_count || 0 },
+    { key: "last_7d_submissions", label: "近7天提交", value: overview.last_7d_submissions || 0 },
+  ];
+});
+
+const formatPercent = (value) => {
+  const number = Number(value || 0);
+  return number.toFixed(1) + "%";
+};
+
+const getAssignmentProgress = (item) => {
+  const solvedProblemCount = Number(item?.solved_problem_count ?? 0);
+  const totalProblemCount = Number(item?.total_problem_count ?? 0);
+
+  if (totalProblemCount > 0) {
+    return Number(((solvedProblemCount * 100) / totalProblemCount).toFixed(1));
+  }
+
+  const fallback = Number(item?.problem_completion_rate ?? item?.completion_rate ?? 0);
+  if (Number.isNaN(fallback)) return 0;
+  return Math.min(100, Math.max(0, fallback));
+};
 
 // 开启直播（教师）
 const startLive = async () => {
@@ -813,14 +1100,15 @@ const problemColumns = [
     width: 140,
     render: (row) => {
       const diffValue = row.difficulty || 0;
+      const style = difficultyBadgeStyle[diffValue] || difficultyBadgeStyle[0];
       return h(
-        NButton,
+        NTag,
         {
           size: 'small',
-          color: difficultyColor[diffValue],
-          style: 'cursor: default',
+          bordered: false,
+          style: { ...style, cursor: 'default' },
         },
-        { default: () => difficultyMap[diffValue] }
+        { default: () => difficultyMap[diffValue] || difficultyMap[0] }
       );
     },
   },
@@ -913,7 +1201,20 @@ const mainProblemColumns = [
   {
     title: '难度',
     key: 'difficulty',
-    width: 100,
+    width: 120,
+    render: (row) => {
+      const diffValue = row.difficulty || 0;
+      const style = difficultyBadgeStyle[diffValue] || difficultyBadgeStyle[0];
+      return h(
+        NTag,
+        {
+          size: 'small',
+          bordered: false,
+          style: { ...style, cursor: 'default' },
+        },
+        { default: () => difficultyMap[diffValue] || difficultyMap[0] }
+      );
+    },
   },
   {
     title: '操作',
@@ -952,14 +1253,15 @@ const selectProblemColumns = [
     width: 120,
     render: (row) => {
       const diffValue = row.difficulty || 0;
+      const style = difficultyBadgeStyle[diffValue] || difficultyBadgeStyle[0];
       return h(
-        NButton,
+        NTag,
         {
           size: 'small',
-          color: difficultyColor[diffValue],
-          style: 'cursor: default',
+          bordered: false,
+          style: { ...style, cursor: 'default' },
         },
-        { default: () => difficultyMap[diffValue] }
+        { default: () => difficultyMap[diffValue] || difficultyMap[0] }
       );
     },
   },
@@ -1066,10 +1368,39 @@ const gradesColumns = computed(() => {
 });
 
 // API 调用
+const fetchDashboard = () => {
+  if (!classInfo.value || classInfo.value.user_role !== "teacher") {
+    return;
+  }
+
+  dashboardLoading.value = true;
+  Axios.get(`class/class/${classId}/dashboard/`)
+    .then(res => {
+      const defaults = createDefaultDashboardData();
+      dashboardData.value = {
+        ...defaults,
+        ...res,
+        overview: {
+          ...defaults.overview,
+          ...(res.overview || {}),
+        },
+      };
+    })
+    .catch(() => {
+      message.error("获取学情看板失败");
+    })
+    .finally(() => {
+      dashboardLoading.value = false;
+    });
+};
+
 const fetchClassInfo = () => {
   Axios.get(`class/class/${classId}/`)
     .then(res => {
       classInfo.value = res;
+      if (res.user_role === "teacher") {
+        fetchDashboard();
+      }
     })
     .catch(() => {
       message.error('获取班级信息失败');
@@ -1462,11 +1793,82 @@ const addProblemToAssignment = (problem) => {
   message.success('添加成功');
 };
 
+const moveSelectedProblemForAssignment = (index, direction) => {
+  const targetIndex = index + direction;
+  if (targetIndex < 0 || targetIndex >= selectedProblemsForAssignment.value.length) return;
+
+  const list = selectedProblemsForAssignment.value;
+  [list[index], list[targetIndex]] = [list[targetIndex], list[index]];
+};
+
 const removeSelectedProblemForAssignment = (index) => {
   selectedProblemsForAssignment.value.splice(index, 1);
 };
 
 // 学生操作
+const openStudentFeedback = (member) => {
+  if (!member || member.role !== 'student') {
+    return;
+  }
+
+  studentFeedbackLoading.value = true;
+  studentFeedback.value = createDefaultStudentFeedback();
+  showStudentFeedbackModal.value = true;
+
+  Axios.get(`class/class/${classId}/student-feedback/`, {
+    params: {
+      user_id: member.user.id,
+    },
+  })
+    .then((res) => {
+      const defaults = createDefaultStudentFeedback();
+      studentFeedback.value = {
+        ...defaults,
+        ...res,
+        overview: {
+          ...defaults.overview,
+          ...(res.overview || {}),
+        },
+        assignments: Array.isArray(res.assignments) ? res.assignments : [],
+        weak_problems: Array.isArray(res.weak_problems) ? res.weak_problems : [],
+      };
+    })
+    .catch((err) => {
+      message.error(err.response?.data?.error || '获取学情反馈失败');
+      showStudentFeedbackModal.value = false;
+    })
+    .finally(() => {
+      studentFeedbackLoading.value = false;
+    });
+};
+
+const copyStudentFeedbackText = async () => {
+  const content = studentFeedback.value?.parent_summary || '';
+  if (!content) {
+    message.warning('暂无可复制内容');
+    return;
+  }
+
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(content);
+    } else {
+      const textarea = document.createElement('textarea');
+      textarea.value = content;
+      textarea.setAttribute('readonly', 'readonly');
+      textarea.style.position = 'absolute';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    }
+    message.success('已复制，可直接发给家长');
+  } catch (err) {
+    message.error('复制失败，请手动复制');
+  }
+};
+
 const addStudent = () => {
   if (!addStudentForm.value.user_id) {
     message.warning('请输入用户ID');
@@ -1557,3 +1959,314 @@ onMounted(() => {
   }, 500);
 });
 </script>
+
+
+<style scoped>
+.class-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.class-hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 18px;
+  padding: 24px;
+  border: 1px solid #dce8df;
+  background: linear-gradient(140deg, #f8fcf8 0%, #edf6ef 55%, #f6faf7 100%);
+}
+
+.class-hero__glow {
+  position: absolute;
+  right: -60px;
+  top: -90px;
+  width: 260px;
+  height: 260px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(50, 205, 126, 0.26) 0%, rgba(50, 205, 126, 0) 72%);
+  pointer-events: none;
+}
+
+.class-hero__content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.class-hero__info {
+  min-width: 0;
+}
+
+.class-title {
+  margin: 0;
+  font-size: clamp(30px, 3vw, 42px);
+  line-height: 1.15;
+  font-weight: 800;
+  color: #1d2c22;
+}
+
+.class-description {
+  margin: 10px 0 0;
+  color: #4c6254;
+  line-height: 1.6;
+}
+
+.class-stats {
+  margin-top: 14px;
+}
+
+.class-tabs {
+  border: 1px solid #e8efea;
+  border-radius: 14px;
+  padding: 8px 14px 16px;
+  background: #fff;
+}
+
+.dashboard-pane {
+  width: 100%;
+}
+
+.dashboard-overview-card {
+  border: 1px solid #e4edf0;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fafb 100%);
+}
+
+.dashboard-overview-card__label {
+  color: #607382;
+  font-size: 12px;
+}
+
+.dashboard-overview-card__value {
+  margin-top: 8px;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+  color: #1f3550;
+}
+
+.dashboard-panel {
+  border: 1px solid #e7efea;
+  background: #fcfefd;
+}
+
+.dashboard-assignment-item {
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #e5ece7;
+}
+
+.dashboard-assignment-item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
+.dashboard-assignment-item__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-assignment-item__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #24322f;
+}
+
+.dashboard-assignment-item__meta,
+.dashboard-problem-item__meta,
+.dashboard-student-item__meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #60706a;
+}
+
+.dashboard-problem-item {
+  padding: 8px 0;
+  border-bottom: 1px dashed #e5ece7;
+}
+
+.dashboard-problem-item:last-child {
+  border-bottom: none;
+}
+
+.dashboard-problem-item__title a {
+  color: #166fb0;
+  text-decoration: none;
+}
+
+.dashboard-problem-item__title a:hover {
+  text-decoration: underline;
+}
+
+.dashboard-student-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #e7ecea;
+  background: #fff;
+}
+
+.dashboard-student-item__name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2a3831;
+}
+
+.assignment-pane {
+  width: 100%;
+}
+
+.assignment-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.assignment-toolbar__meta {
+  min-width: 0;
+}
+
+.assignment-toolbar__title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #253228;
+}
+
+.assignment-toolbar__hint {
+  margin: 8px 0 0;
+  color: #66796c;
+}
+
+.assignment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.assignment-card {
+  border: 1px solid #e7efea;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdfb 100%);
+  transition: transform 0.18s ease, box-shadow 0.2s ease;
+}
+
+.assignment-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 26px rgba(18, 73, 43, 0.08);
+}
+
+.assignment-card :deep(.n-card__content) {
+  padding-top: 10px;
+}
+
+.assignment-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.assignment-card__title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #263528;
+  line-height: 1.35;
+}
+
+.assignment-card__deadline {
+  display: flex;
+  gap: 4px;
+  font-size: 13px;
+  color: #4f6657;
+}
+
+.assignment-card__deadline .label {
+  color: #74877b;
+}
+
+.assignment-card__description {
+  margin: 0;
+  color: #304235;
+  line-height: 1.65;
+  min-height: 52px;
+  white-space: pre-wrap;
+}
+
+.assignment-card__actions {
+  padding-top: 4px;
+}
+
+.assignment-empty {
+  padding: 26px 0;
+}
+
+
+.student-feedback-summary {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  color: #2a3a32;
+}
+
+.student-feedback-card {
+  border: 1px solid #e7efea;
+  background: #fcfffd;
+}
+
+.student-feedback-assignment {
+  padding: 8px 0;
+  border-bottom: 1px dashed #e4ece7;
+}
+
+.student-feedback-assignment:last-child {
+  border-bottom: none;
+}
+
+.student-feedback-assignment__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #273630;
+}
+
+.student-feedback-assignment__title a {
+  color: #1a6fb4;
+  text-decoration: none;
+}
+
+.student-feedback-assignment__title a:hover {
+  text-decoration: underline;
+}
+
+.student-feedback-line {
+  margin-top: 3px;
+  font-size: 12px;
+  color: #62736a;
+}
+@media (max-width: 900px) {
+  .class-hero {
+    padding: 18px;
+  }
+
+  .class-hero__content {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .class-hero__actions {
+    width: 100%;
+  }
+
+  .class-hero__actions :deep(.n-button) {
+    width: 100%;
+  }
+
+  .assignment-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

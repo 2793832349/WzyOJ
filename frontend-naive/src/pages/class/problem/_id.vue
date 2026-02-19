@@ -3,13 +3,13 @@
     <h1>#{{ problem.id }} {{ problem.display_title }}</h1>
     
     <n-space style="margin-bottom: 20px">
-      <n-button
+      <n-tag
         size="small"
-        :color="difficultyColor[problem.difficulty || 0]"
-        style="cursor: default"
+        :bordered="false"
+        :style="getDifficultyBadgeStyle(problem.difficulty || 0)"
       >
-        {{ difficultyMap[problem.difficulty || 0] }}
-      </n-button>
+        {{ difficultyMap[problem.difficulty || 0] || difficultyMap[0] }}
+      </n-tag>
       <n-tag type="info">时间限制: {{ problem.time_limit }}ms</n-tag>
       <n-tag type="info">内存限制: {{ problem.memory_limit }}MB</n-tag>
       <n-tag type="success">班级专属题目</n-tag>
@@ -109,7 +109,7 @@ import { ref, onMounted } from 'vue';
 import { useRoute } from 'vue-router';
 import { useMessage } from 'naive-ui';
 import Axios from '@/plugins/axios';
-import { difficulty as difficultyMap, difficultyColor } from '@/plugins/consts';
+import { difficulty as difficultyMap, difficultyBadgeStyle } from '@/plugins/consts';
 
 const route = useRoute();
 const message = useMessage();
@@ -129,6 +129,11 @@ const languageOptions = [
   { label: 'Python', value: 'python' },
   { label: 'Java', value: 'java' },
 ];
+
+const getDifficultyBadgeStyle = (difficulty) => {
+  const style = difficultyBadgeStyle[difficulty] || difficultyBadgeStyle[0];
+  return { ...style, cursor: 'default' };
+};
 
 // 获取题目详情
 const fetchProblem = () => {

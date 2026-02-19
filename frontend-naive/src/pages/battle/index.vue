@@ -19,13 +19,16 @@ const difficultyMax = ref(null);
 
 const difficultyOptions = [
   { label: '不限', value: null },
-  { label: '入门', value: 0 },
-  { label: '普及-', value: 1 },
-  { label: '普及/提高-', value: 2 },
-  { label: '普及+/提高', value: 3 },
-  { label: '提高+/省选-', value: 4 },
-  { label: '省选/NOI-', value: 5 },
-  { label: 'NOI/NOI+/CTSC', value: 6 },
+  { label: '黑铁', value: 0 },
+  { label: '青铜', value: 1 },
+  { label: '白银', value: 2 },
+  { label: '黄金', value: 3 },
+  { label: '翡翠', value: 4 },
+  { label: '铂金', value: 5 },
+  { label: '钻石', value: 6 },
+  { label: '大师', value: 7 },
+  { label: '宗师', value: 8 },
+  { label: '王者', value: 9 },
 ];
 
 const createRoom = async () => {

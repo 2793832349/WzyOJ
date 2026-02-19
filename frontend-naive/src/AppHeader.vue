@@ -22,10 +22,10 @@ import {
   BookOutline,
   TrophyOutline,
   PeopleOutline,
-  SunnyOutline,
-  MoonOutline,
   ListOutline,
   SchoolOutline,
+  MegaphoneOutline,
+  HelpCircleOutline,
 } from '@vicons/ionicons5';
 import config from './config';
 
@@ -60,11 +60,18 @@ const userOptions = computed(() => {
   const permissions = store.state.user?.permissions || [];
   const options = [...baseUserOptions];
   if (permissions.includes('site_setting')) {
-    options.splice(2, 0, {
-      label: '站点设置',
-      key: 'site_settings',
-      icon: renderIcon(ControlOutlined),
-    });
+    options.splice(2, 0,
+      {
+        label: '公告管理',
+        key: 'announcement_manage',
+        icon: renderIcon(MegaphoneOutline),
+      },
+      {
+        label: '站点设置',
+        key: 'site_settings',
+        icon: renderIcon(ControlOutlined),
+      }
+    );
   }
   return options;
 });
@@ -87,9 +94,17 @@ const toolsOptions = [
     label: '比赛批量上传评测',
     key: 'tools_contest_batch_judge',
   },
+  {
+    label: '入学测试（AlgoCard）',
+    key: 'tools_algocard',
+  },
 ];
 
 const handleToolsSelect = key => {
+  if (key === 'tools_algocard') {
+    window.open('/algocard/', '_blank');
+    return;
+  }
   router.push({ name: key });
 };
 
@@ -108,191 +123,191 @@ const handleUserOptionSelect = key => {
 </script>
 
 <template>
-  <div style="display: inline-block">
-    <n-space size="small">
-      <router-link :to="{ name: 'home' }">
-        <n-button
-          :tertiary="route.meta.cate === 'home'"
-          :quaternary="route.meta.cate !== 'home'"
-        >
-          <template #icon>
-            <n-icon :component="HomeOutlined" />
-          </template>
-          首页
-        </n-button>
-      </router-link>
-      <router-link :to="{ name: 'problem_list' }">
-        <n-button
-          :tertiary="route.meta.cate === 'problem'"
-          :quaternary="route.meta.cate !== 'problem'"
-        >
-          <template #icon>
-            <n-icon :component="BookOutline" />
-          </template>
-          题目
-        </n-button>
-      </router-link>
-      <router-link :to="{ name: 'contest_list' }">
-        <n-button
-          :tertiary="route.meta.cate === 'contest'"
-          :quaternary="route.meta.cate !== 'contest'"
-        >
-          <template #icon>
-            <n-icon :component="TrophyOutline" />
-          </template>
-          比赛
-        </n-button>
-      </router-link>
-      <router-link :to="{ name: 'battle_lobby' }" v-if="store.getters.loggedIn">
-        <n-button
-          :tertiary="route.meta.cate === 'battle'"
-          :quaternary="route.meta.cate !== 'battle'"
-        >
-          <template #icon>
-            <n-icon :component="ThunderboltOutlined" />
-          </template>
-          对战
-        </n-button>
-      </router-link>
-      <router-link :to="{ name: 'problemset_list' }">
-        <n-button
-          :tertiary="route.meta.cate === 'problemset'"
-          :quaternary="route.meta.cate !== 'problemset'"
-        >
-          <template #icon>
-            <n-icon :component="ListOutline" />
-          </template>
-          题单
-        </n-button>
-      </router-link>
-      <router-link :to="{ name: 'course_list' }" v-if="store.getters.loggedIn">
-        <n-button
-          :tertiary="route.meta.cate === 'course'"
-          :quaternary="route.meta.cate !== 'course'"
-        >
-          <template #icon>
-            <n-icon :component="SchoolOutline" />
-          </template>
-          课程
-        </n-button>
-      </router-link>
-      <router-link :to="{ name: 'class_list' }" v-if="store.getters.loggedIn">
-        <n-button
-          :tertiary="route.meta.cate === 'class'"
-          :quaternary="route.meta.cate !== 'class'"
-        >
-          <template #icon>
-            <n-icon :component="TeamOutlined" />
-          </template>
-          班级
-        </n-button>
-      </router-link>
-      <router-link :to="{ name: 'book_list' }" v-if="store.getters.loggedIn">
-        <n-button
-          :tertiary="route.meta.cate === 'book'"
-          :quaternary="route.meta.cate !== 'book'"
-        >
-          <template #icon>
-            <n-icon :component="BookOutline" />
-          </template>
-          电子书
-        </n-button>
-      </router-link>
-      <router-link :to="{ name: 'submission_list' }">
-        <n-button
-          :tertiary="route.meta.cate === 'submission'"
-          :quaternary="route.meta.cate !== 'submission'"
-        >
-          <template #icon>
-            <n-icon :component="HourglassOutlined" />
-          </template>
-          提交
-        </n-button>
-      </router-link>
-      <router-link
-        :to="{ name: 'discussion_list' }"
-        v-if="config.enableDiscussion"
-      >
-        <n-button
-          :tertiary="route.meta.cate === 'discussion'"
-          :quaternary="route.meta.cate !== 'discussion'"
-        >
-          <template #icon>
-            <n-icon :component="CommentOutlined" />
-          </template>
-          讨论
-        </n-button>
-      </router-link>
-      <router-link :to="{ name: 'user_list' }">
-        <n-button
-          :tertiary="route.meta.cate === 'user'"
-          :quaternary="route.meta.cate !== 'user'"
-        >
-          <template #icon>
-            <n-icon :component="PeopleOutline" />
-          </template>
-          用户
-        </n-button>
-      </router-link>
+  <div class="top-nav">
+    <div class="top-nav-left">
+      <div class="nav-scroll">
+        <n-space size="small" :wrap-item="false">
+          <router-link :to="{ name: 'home' }">
+            <n-button :tertiary="route.meta.cate === 'home'" :quaternary="route.meta.cate !== 'home'">
+              <template #icon><n-icon :component="HomeOutlined" /></template>
+              首页
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'problem_list' }">
+            <n-button :tertiary="route.meta.cate === 'problem'" :quaternary="route.meta.cate !== 'problem'">
+              <template #icon><n-icon :component="BookOutline" /></template>
+              题目
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'objective_list' }" v-if="store.getters.loggedIn">
+            <n-button :tertiary="route.meta.cate === 'objective'" :quaternary="route.meta.cate !== 'objective'">
+              <template #icon><n-icon :component="HelpCircleOutline" /></template>
+              客观题
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'contest_list' }">
+            <n-button :tertiary="route.meta.cate === 'contest'" :quaternary="route.meta.cate !== 'contest'">
+              <template #icon><n-icon :component="TrophyOutline" /></template>
+              比赛
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'battle_lobby' }" v-if="store.getters.loggedIn">
+            <n-button :tertiary="route.meta.cate === 'battle'" :quaternary="route.meta.cate !== 'battle'">
+              <template #icon><n-icon :component="ThunderboltOutlined" /></template>
+              对战
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'problemset_list' }">
+            <n-button :tertiary="route.meta.cate === 'problemset'" :quaternary="route.meta.cate !== 'problemset'">
+              <template #icon><n-icon :component="ListOutline" /></template>
+              题单
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'course_list' }" v-if="store.getters.loggedIn">
+            <n-button :tertiary="route.meta.cate === 'course'" :quaternary="route.meta.cate !== 'course'">
+              <template #icon><n-icon :component="SchoolOutline" /></template>
+              课程
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'class_list' }" v-if="store.getters.loggedIn">
+            <n-button :tertiary="route.meta.cate === 'class'" :quaternary="route.meta.cate !== 'class'">
+              <template #icon><n-icon :component="TeamOutlined" /></template>
+              班级
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'book_list' }" v-if="store.getters.loggedIn">
+            <n-button :tertiary="route.meta.cate === 'book'" :quaternary="route.meta.cate !== 'book'">
+              <template #icon><n-icon :component="BookOutline" /></template>
+              电子书
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'submission_list' }">
+            <n-button :tertiary="route.meta.cate === 'submission'" :quaternary="route.meta.cate !== 'submission'">
+              <template #icon><n-icon :component="HourglassOutlined" /></template>
+              提交
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'discussion_list' }" v-if="config.enableDiscussion">
+            <n-button :tertiary="route.meta.cate === 'discussion'" :quaternary="route.meta.cate !== 'discussion'">
+              <template #icon><n-icon :component="CommentOutlined" /></template>
+              讨论
+            </n-button>
+          </router-link>
+          <router-link :to="{ name: 'user_list' }">
+            <n-button :tertiary="route.meta.cate === 'user'" :quaternary="route.meta.cate !== 'user'">
+              <template #icon><n-icon :component="PeopleOutline" /></template>
+              用户
+            </n-button>
+          </router-link>
 
-      <n-dropdown
-        v-if="store.getters.loggedIn && canSeeToolsNav"
-        trigger="hover"
-        :options="toolsOptions"
-        @select="handleToolsSelect"
-      >
-        <n-button
-          :tertiary="route.meta.cate === 'tools'"
-          :quaternary="route.meta.cate !== 'tools'"
-        >
-          工具导航
-        </n-button>
-      </n-dropdown>
-    </n-space>
-  </div>
-  <div style="display: inline; float: right">
-    <n-space size="small" v-if="!store.getters.loggedIn">
-      <router-link :to="{ name: 'register' }" v-if="config.allowRegister">
-        <n-button
-          :tertiary="route.meta.cate === 'register'"
-          :quaternary="route.meta.cate !== 'register'"
-        >
-          <template #icon>
-            <n-icon :component="UserAddOutlined" />
-          </template>
-          注册
-        </n-button>
-      </router-link>
+          <n-dropdown
+            v-if="store.getters.loggedIn && canSeeToolsNav"
+            trigger="hover"
+            :options="toolsOptions"
+            @select="handleToolsSelect"
+          >
+            <n-button :tertiary="route.meta.cate === 'tools'" :quaternary="route.meta.cate !== 'tools'">
+              工具导航
+            </n-button>
+          </n-dropdown>
+        </n-space>
+      </div>
+    </div>
 
-      <router-link :to="{ name: 'login' }">
-        <n-button
-          :tertiary="route.meta.cate === 'login'"
-          :quaternary="route.meta.cate !== 'login'"
-        >
-          <template #icon>
-            <n-icon :component="LogInOutline" />
-          </template>
-          登录
-        </n-button>
-      </router-link>
-    </n-space>
-    <n-space size="small" v-else>
-      <n-dropdown
-        trigger="hover"
-        :options="userOptions"
-        size="large"
-        @select="handleUserOptionSelect"
-      >
-        <n-button size="large" quaternary>
-          欢迎回来，{{ store.state.user.username }}
-        </n-button>
-      </n-dropdown>
-    </n-space>
+    <div class="top-nav-right">
+      <n-space size="small" v-if="!store.getters.loggedIn">
+        <router-link :to="{ name: 'register' }" v-if="config.allowRegister">
+          <n-button :tertiary="route.meta.cate === 'register'" :quaternary="route.meta.cate !== 'register'">
+            <template #icon><n-icon :component="UserAddOutlined" /></template>
+            注册
+          </n-button>
+        </router-link>
+
+        <router-link :to="{ name: 'login' }">
+          <n-button :tertiary="route.meta.cate === 'login'" :quaternary="route.meta.cate !== 'login'">
+            <template #icon><n-icon :component="LogInOutline" /></template>
+            登录
+          </n-button>
+        </router-link>
+      </n-space>
+      <n-space size="small" v-else>
+        <n-dropdown trigger="hover" :options="userOptions" size="large" @select="handleUserOptionSelect">
+          <n-button quaternary class="user-button">
+            欢迎回来，{{ store.state.user.username }}
+          </n-button>
+        </n-dropdown>
+      </n-space>
+    </div>
   </div>
 </template>
 
 <style lang="scss" scoped>
+.top-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.top-nav-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+}
+
+.nav-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.nav-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(100, 116, 139, 0.35);
+}
+
+.top-nav-right {
+  flex-shrink: 0;
+}
+
 a {
   text-decoration: none;
+}
+
+:deep(.top-nav .n-button) {
+  border-radius: 10px;
+  border: 1px solid #dbe5f0;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+:deep(.top-nav .n-button.n-button--tertiary-type) {
+  background: linear-gradient(180deg, #e9f1ff 0%, #dce9ff 100%);
+  border-color: #bcd3ff;
+  color: #1e3a8a;
+}
+
+:deep(.top-nav .n-button:hover) {
+  transform: translateY(-1px);
+  transition: all 0.2s ease;
+}
+
+.user-button {
+  font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .top-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .top-nav-right {
+    display: flex;
+    justify-content: flex-end;
+  }
 }
 </style>

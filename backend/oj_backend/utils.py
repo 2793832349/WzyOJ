@@ -1,10 +1,25 @@
+import logging
+
 from rest_framework.views import exception_handler as base_exception_handler
 from rest_framework.exceptions import ValidationError
 
 
+logger = logging.getLogger(__name__)
+
+
 def exception_handler(exception, context):
     response = base_exception_handler(exception, context)
-    if isinstance(exception, ValidationError):
+    if response is None:
+        request = context.get('request')
+        logger.exception(
+            "Unhandled exception in DRF",
+            extra={
+                'path': getattr(request, 'path', None),
+                'method': getattr(request, 'method', None),
+                'view': str(context.get('view', None)),
+            },
+        )
+    if response is not None and isinstance(exception, ValidationError):
         if isinstance(response.data, dict):
             data = {}
             for key, value in response.data.items():

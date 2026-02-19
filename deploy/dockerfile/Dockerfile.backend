@@ -5,7 +5,7 @@ ARG USE_MIRROR
 RUN if [ "$USE_MIRROR" = "true" ]; then \
     sed -E -i -e 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list; \
     fi
-RUN apt-get update && apt-get install -y supervisor && cd /srv
+RUN apt-get update && apt-get install -y supervisor tesseract-ocr tesseract-ocr-chi-sim && cd /srv
 COPY ./backend /srv/server
 RUN cd /srv/server && if [ "$USE_MIRROR" = "true" ]; then \
     pip3 install -r requirements.txt --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ && pip3 install psycopg2 uwsgi --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/; \

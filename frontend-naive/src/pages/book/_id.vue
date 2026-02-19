@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useMessage } from 'naive-ui';
 import Axios from '@/plugins/axios';
@@ -14,6 +14,23 @@ const book = ref(null);
 const loading = ref(false);
 const activeTab = ref('overview');
 
+const hasAccess = ref(true);
+const checkingAccess = ref(false);
+
+const showRedeemModal = ref(false);
+const redeemCode = ref('');
+const redeeming = ref(false);
+
+const showPaymentModal = ref(false);
+const paymentRequesting = ref(false);
+const paymentForm = ref({
+  amount_cents: 9900,
+  payment_reference: '',
+  remark: '',
+});
+const loadingPaymentRequests = ref(false);
+const paymentRequests = ref([]);
+
 const canManage = computed(() => {
   const permissions = store.state.user?.permissions || [];
   return store.state.user?.is_staff || permissions.includes('class') || permissions.includes('problem');
@@ -26,10 +43,39 @@ const difficultyMap = {
   hard: { label: '困难', type: 'error' },
 };
 
+const paymentStatusMap = {
+  pending: { label: '待确认', type: 'warning' },
+  activated: { label: '已开通', type: 'success' },
+  rejected: { label: '已驳回', type: 'error' },
+};
+
+const paymentStatusMeta = (status) => {
+  return paymentStatusMap[status] || { label: status || '未知', type: 'default' };
+};
+
+const formatYuan = (amountCents) => {
+  const cents = Number(amountCents || 0);
+  return (cents / 100).toFixed(2);
+};
+
+const formatTime = (value) => {
+  if (!value) return '-';
+  const time = new Date(value);
+  if (Number.isNaN(time.getTime())) return '-';
+  return time.toLocaleString();
+};
+
 const loadBook = async () => {
   loading.value = true;
   try {
     book.value = await Axios.get(`/book/books/${bookId}/`);
+    if (!book.value.is_free) {
+      await checkAccess();
+      await loadPaymentRequests();
+    } else {
+      hasAccess.value = true;
+      paymentRequests.value = [];
+    }
   } catch (err) {
     console.error('Failed to load book:', err);
     message.error('加载书籍失败');
@@ -38,7 +84,100 @@ const loadBook = async () => {
   }
 };
 
+const checkAccess = async () => {
+  checkingAccess.value = true;
+  try {
+    const res = await Axios.get(`/book/books/${bookId}/check_access/`);
+    hasAccess.value = !!res.has_access;
+  } catch (err) {
+    hasAccess.value = false;
+  } finally {
+    checkingAccess.value = false;
+  }
+};
+
+const loadPaymentRequests = async () => {
+  if (!book.value || book.value.is_free) {
+    paymentRequests.value = [];
+    return;
+  }
+  loadingPaymentRequests.value = true;
+  try {
+    const res = await Axios.get(`/book/books/${bookId}/payment_requests/`);
+    paymentRequests.value = res.results || [];
+  } catch (err) {
+    paymentRequests.value = [];
+  } finally {
+    loadingPaymentRequests.value = false;
+  }
+};
+
+
+const openRedeemModal = () => {
+  redeemCode.value = '';
+  showRedeemModal.value = true;
+};
+
+const submitRedeem = async () => {
+  const code = String(redeemCode.value || '').trim();
+  if (!code) {
+    message.warning('请输入兑换码');
+    return;
+  }
+
+  redeeming.value = true;
+  try {
+    await Axios.post(`/book/books/${bookId}/redeem/`, { code });
+    message.success('兑换成功，已自动开通电子书');
+    showRedeemModal.value = false;
+    hasAccess.value = true;
+    await loadBook();
+  } catch (err) {
+    message.error(err?.response?.data?.detail || err?.detail || '兑换失败');
+  } finally {
+    redeeming.value = false;
+  }
+};
+
+
+const openPaymentModal = () => {
+  paymentForm.value = {
+    amount_cents: paymentForm.value.amount_cents || 9900,
+    payment_reference: '',
+    remark: '',
+  };
+  showPaymentModal.value = true;
+};
+
+const submitPaymentRequest = async () => {
+  if (!paymentForm.value.amount_cents || Number(paymentForm.value.amount_cents) <= 0) {
+    message.warning('请输入正确的支付金额（分）');
+    return;
+  }
+
+  paymentRequesting.value = true;
+  try {
+    const res = await Axios.post(`/book/books/${bookId}/payment_request/`, {
+      amount_cents: Number(paymentForm.value.amount_cents),
+      payment_reference: paymentForm.value.payment_reference,
+      remark: paymentForm.value.remark,
+    });
+    message.success(res.detail || '支付申请已提交');
+    showPaymentModal.value = false;
+    await loadPaymentRequests();
+    await checkAccess();
+  } catch (err) {
+    message.error(err?.response?.data?.detail || err?.detail || '提交支付申请失败');
+  } finally {
+    paymentRequesting.value = false;
+  }
+};
+
 const startReading = async () => {
+  if (!hasAccess.value && !book.value?.is_free) {
+    openRedeemModal();
+    return;
+  }
   try {
     const res = await Axios.post(`/book/books/${bookId}/start_reading/`);
     if (res.first_section_id) {
@@ -52,6 +191,10 @@ const startReading = async () => {
 };
 
 const continueReading = () => {
+  if (!hasAccess.value && !book.value?.is_free) {
+    openRedeemModal();
+    return;
+  }
   if (book.value?.user_progress?.last_section_id) {
     router.push({ name: 'book_section', params: { id: book.value.user_progress.last_section_id } });
   } else {
@@ -60,6 +203,10 @@ const continueReading = () => {
 };
 
 const goToSection = (sectionId) => {
+  if (!hasAccess.value && !book.value?.is_free) {
+    openRedeemModal();
+    return;
+  }
   router.push({ name: 'book_section', params: { id: sectionId } });
 };
 
@@ -83,7 +230,6 @@ onMounted(() => {
   <div class="book-detail-page">
     <n-spin :show="loading">
       <template v-if="book">
-        <!-- 书籍头部 -->
         <div class="book-header">
           <div class="book-cover-large">
             <img v-if="book.cover" :src="book.cover" :alt="book.title" />
@@ -91,10 +237,10 @@ onMounted(() => {
               <span>{{ book.title.substring(0, 2) }}</span>
             </div>
           </div>
-          
+
           <div class="book-info">
             <h1 class="book-title">{{ book.title }}</h1>
-            
+
             <n-space align="center" style="margin-bottom: 12px">
               <n-tag v-if="book.difficulty" :type="difficultyMap[book.difficulty]?.type" size="small">
                 {{ difficultyMap[book.difficulty]?.label }}
@@ -102,10 +248,13 @@ onMounted(() => {
               <n-tag v-for="tag in book.tags" :key="tag" size="small" :bordered="false">
                 {{ tag }}
               </n-tag>
+              <n-tag v-if="!book.is_free" type="warning" size="small">付费书籍</n-tag>
+              <n-tag v-if="!book.is_free && hasAccess" type="success" size="small">已开通</n-tag>
+              <n-tag v-if="!book.is_free" type="info" size="small">支付成功自动开通</n-tag>
             </n-space>
-            
+
             <p class="book-desc">{{ book.description }}</p>
-            
+
             <n-space align="center" style="margin-bottom: 16px; color: #666; font-size: 14px">
               <span>{{ book.chapter_count }} 章 / {{ book.section_count }} 节</span>
               <n-divider vertical />
@@ -113,8 +262,7 @@ onMounted(() => {
               <n-divider vertical />
               <span>{{ book.reader_count }} 人已读</span>
             </n-space>
-            
-            <!-- 进度条 -->
+
             <div v-if="book.user_progress" class="progress-section">
               <n-space justify="space-between" style="margin-bottom: 8px">
                 <span>学习进度</span>
@@ -127,7 +275,7 @@ onMounted(() => {
                 status="success"
               />
             </div>
-            
+
             <n-space style="margin-top: 16px">
               <n-button v-if="book.user_progress" type="primary" size="large" @click="continueReading">
                 继续阅读
@@ -138,17 +286,32 @@ onMounted(() => {
               <n-button size="large" @click="router.push({ name: 'book_list' })">
                 返回列表
               </n-button>
+              <n-button
+                v-if="!book.is_free && !hasAccess"
+                type="success"
+                size="large"
+                @click="openRedeemModal"
+              >
+                输入兑换码
+              </n-button>
+              <n-button
+                v-if="!book.is_free && !hasAccess"
+                type="warning"
+                size="large"
+                @click="openPaymentModal"
+              >
+                提交支付申请
+              </n-button>
             </n-space>
           </div>
         </div>
-        
-        <!-- 标签页 -->
+
         <n-tabs v-model:value="activeTab" type="line" style="margin-top: 24px">
           <n-tab-pane name="overview" tab="概览">
             <div class="overview-content">
               <h3>📖 书籍简介</h3>
               <p>{{ book.description || '暂无简介' }}</p>
-              
+
               <h3 style="margin-top: 24px">📚 章节概览</h3>
               <n-list>
                 <n-list-item v-for="chapter in book.chapters" :key="chapter.id">
@@ -169,7 +332,7 @@ onMounted(() => {
               </n-list>
             </div>
           </n-tab-pane>
-          
+
           <n-tab-pane name="catalog" tab="目录">
             <div class="catalog-content">
               <n-collapse>
@@ -179,10 +342,10 @@ onMounted(() => {
                       {{ chapter.completed_count || 0 }} / {{ chapter.section_count }}
                     </n-tag>
                   </template>
-                  
+
                   <n-list>
-                    <n-list-item 
-                      v-for="section in chapter.sections" 
+                    <n-list-item
+                      v-for="section in chapter.sections"
                       :key="section.id"
                       class="section-item"
                       @click="goToSection(section.id)"
@@ -220,8 +383,97 @@ onMounted(() => {
             </div>
           </n-tab-pane>
         </n-tabs>
+
+        <n-alert v-if="!book.is_free && !hasAccess" type="warning" style="margin-top: 16px">
+          <template #header>此书籍需要开通</template>
+          支持两种方式：输入兑换码直接兑换，或提交支付申请并在确认后自动开通。
+          <n-button size="small" type="success" style="margin-left: 12px" @click="openRedeemModal">
+            输入兑换码
+          </n-button>
+          <n-button size="small" type="primary" style="margin-left: 8px" @click="openPaymentModal">
+            提交支付申请
+          </n-button>
+        </n-alert>
+
+        <n-card v-if="!book.is_free && canManage" title="支付记录（自动开通）" style="margin-top: 16px">
+          <template #header-extra>
+            <n-button size="small" @click="loadPaymentRequests" :loading="loadingPaymentRequests">刷新</n-button>
+          </template>
+          <n-spin :show="loadingPaymentRequests || checkingAccess">
+            <n-table :bordered="false" :single-line="false" v-if="paymentRequests.length > 0">
+              <thead>
+                <tr>
+                  <th>申请时间</th>
+                  <th>金额</th>
+                  <th>支付备注</th>
+                  <th>状态</th>
+                  <th>处理结果</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="req in paymentRequests" :key="req.request_id">
+                  <td>{{ formatTime(req.created_at) }}</td>
+                  <td>¥ {{ formatYuan(req.amount_cents) }}</td>
+                  <td>{{ req.payment_reference || req.remark || '-' }}</td>
+                  <td>
+                    <n-tag size="small" :type="paymentStatusMeta(req.status).type">
+                      {{ paymentStatusMeta(req.status).label }}
+                    </n-tag>
+                  </td>
+                  <td>
+                    <template v-if="req.status === 'activated'">
+                      {{ formatTime(req.activated_at || req.paid_at) }} 开通
+                    </template>
+                    <template v-else-if="req.status === 'rejected'">
+                      驳回：{{ req.rejected_reason || '无' }}
+                    </template>
+                    <span v-else style="color: #999">等待教师确认</span>
+                  </td>
+                </tr>
+              </tbody>
+            </n-table>
+            <n-empty v-else description="暂无支付记录" />
+          </n-spin>
+        </n-card>
       </template>
     </n-spin>
+
+
+    <n-modal v-model:show="showRedeemModal" preset="dialog" title="输入兑换码兑换">
+      <n-input
+        v-model:value="redeemCode"
+        placeholder="请输入兑换码"
+        @keyup.enter="submitRedeem"
+      />
+      <template #action>
+        <n-button @click="showRedeemModal = false">取消</n-button>
+        <n-button type="primary" :loading="redeeming" @click="submitRedeem">兑换</n-button>
+      </template>
+    </n-modal>
+
+    <n-modal v-model:show="showPaymentModal" preset="dialog" title="提交支付申请（支付成功后自动开通）">
+      <n-form :model="paymentForm" label-placement="left" label-width="110px">
+        <n-form-item label="支付金额（分）" required>
+          <n-input-number v-model:value="paymentForm.amount_cents" :min="1" :step="100" style="width: 220px" />
+          <span style="margin-left: 8px; color: #999">当前：¥ {{ formatYuan(paymentForm.amount_cents) }}</span>
+        </n-form-item>
+        <n-form-item label="支付流水号">
+          <n-input v-model:value="paymentForm.payment_reference" placeholder="可选，填写转账单号" />
+        </n-form-item>
+        <n-form-item label="备注">
+          <n-input
+            v-model:value="paymentForm.remark"
+            type="textarea"
+            :rows="3"
+            placeholder="可选，例如：微信已支付，请尽快确认"
+          />
+        </n-form-item>
+      </n-form>
+      <template #action>
+        <n-button @click="showPaymentModal = false">取消</n-button>
+        <n-button type="primary" :loading="paymentRequesting" @click="submitPaymentRequest">提交申请</n-button>
+      </template>
+    </n-modal>
   </div>
 </template>
 

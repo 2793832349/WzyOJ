@@ -40,8 +40,8 @@ def _validate_difficulty_range(dmin, dmax):
         return
     if dmin is None or dmax is None:
         raise ValidationError('difficulty_min/difficulty_max 需要同时提供')
-    if dmin < 0 or dmax < 0 or dmin > 6 or dmax > 6:
-        raise ValidationError('difficulty 取值范围为 0~6')
+    if dmin < 0 or dmax < 0 or dmin > 9 or dmax > 9:
+        raise ValidationError('difficulty 取值范围为 0~9')
     if dmin > dmax:
         raise ValidationError('difficulty_min 不能大于 difficulty_max')
 

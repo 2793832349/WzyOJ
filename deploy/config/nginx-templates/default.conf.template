@@ -37,6 +37,12 @@ server {
         add_header Cache-Control "public, max-age=86400";
     }
     
+    location /algocard/ {
+        alias /usr/share/nginx/algocard/;
+        try_files $uri $uri/ /algocard/index.html;
+        index index.html;
+    }
+    
     location / {
         root /usr/share/nginx/html;
         try_files $uri $uri/ /index.html;

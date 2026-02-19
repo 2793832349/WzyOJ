@@ -1,12 +1,12 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import Axios from '@/plugins/axios';
 
 import store from '@/store';
 import { difficultyOptions } from '@/plugins/consts';
 import ProblemTable from '@/components/ProblemTable.vue';
 import { useRoute } from 'vue-router';
-import { BookmarksOutline, AddOutline } from '@vicons/ionicons5';
+import { BookmarksOutline, AddOutline, SearchOutline } from '@vicons/ionicons5';
 import { _writeSearchToQuery } from '@/plugins/utils';
 
 const route = useRoute();
@@ -20,26 +20,44 @@ Axios.get('/problem/tag/').then(res => {
   }));
 });
 
-const pagination = ref({ pageSize: 20, page: 1, count: 0 }),
-  search = ref({
-    search: '',
-    difficulty: null,
-    tags: [],
-  }),
-  data = ref([]),
-  loading = ref(false);
-const writeSearchToQuery = _writeSearchToQuery(
-  search.value,
-  pagination.value,
-  route
-);
+const pagination = ref({ pageSize: 20, page: 1, count: 0 });
+const search = ref({
+  search: '',
+  difficulty: null,
+  tags: [],
+});
+const data = ref([]);
+const loading = ref(false);
+
+const writeSearchToQuery = _writeSearchToQuery(search.value, pagination.value, route);
+
+const canManageProblem = computed(() => {
+  return store.state.user.permissions.includes('problem');
+});
+
+const hasActiveFilter = computed(() => {
+  return !!search.value.search || search.value.tags.length > 0 || search.value.difficulty !== null;
+});
+
+const pageSolvedCount = computed(() => {
+  return data.value.filter(item => item.solved).length;
+});
+
+const pageAccepted = computed(() => {
+  return data.value.reduce((sum, item) => sum + Number(item.accepted_count || 0), 0);
+});
+
+const pageSubmissions = computed(() => {
+  return data.value.reduce((sum, item) => sum + Number(item.submission_count || 0), 0);
+});
 
 const handleQueryChange = () => {
-  if (!route.name === 'problem_list') return;
+  if (route.name !== 'problem_list') return;
 
   search.value.search = route.query.search || '';
   search.value.difficulty =
     (route.query.difficulty && parseInt(route.query.difficulty)) || null;
+
   const tags = [];
   if (route.query.tags) {
     for (const tag of route.query.tags.split(',')) {
@@ -47,6 +65,7 @@ const handleQueryChange = () => {
     }
   }
   search.value.tags = tags;
+
   for (const key in pagination.value) {
     if (route.query[key]) pagination.value[key] = parseInt(route.query[key]);
   }
@@ -75,17 +94,78 @@ handleQueryChange();
 </script>
 
 <template>
-  <n-layout>
-    <h1>题目列表</h1>
-    <n-layout-content>
-      <div style="display: inline-block">
-        <n-form inline>
-          <n-form-item label="题目ID/名称">
+  <div class="problem-list-page">
+    <div class="bg-glow bg-glow-left" />
+    <div class="bg-glow bg-glow-right" />
+
+    <section class="hero-shell">
+      <div class="hero-grid">
+        <div class="hero-main">
+          <div class="hero-title-row">
+            <h1>题目列表</h1>
+            <n-tag v-if="hasActiveFilter" size="small" type="warning" :bordered="false">筛选中</n-tag>
+          </div>
+          <p>按难度、标签和关键词快速定位目标题，集中刷题并实时追踪通过表现。</p>
+
+          <div class="hero-chips">
+            <span class="hero-chip">累计提交 {{ pageSubmissions }}</span>
+            <span class="hero-chip">累计通过 {{ pageAccepted }}</span>
+            <span class="hero-chip">当前页 {{ data.length }} 题</span>
+          </div>
+        </div>
+
+        <aside class="hero-side">
+          <n-space v-if="canManageProblem" class="hero-actions" :size="10" wrap>
+            <router-link :to="{ name: 'tag_edit' }">
+              <n-button secondary>
+                <template #icon>
+                  <n-icon :component="BookmarksOutline" />
+                </template>
+                标签管理
+              </n-button>
+            </router-link>
+            <router-link :to="{ name: 'problem_create' }">
+              <n-button type="primary">
+                <template #icon>
+                  <n-icon :component="AddOutline" />
+                </template>
+                创建题目
+              </n-button>
+            </router-link>
+          </n-space>
+        </aside>
+      </div>
+
+      <div class="metrics-grid">
+        <div class="metric-card metric-card-blue">
+          <span class="metric-label">题目总数</span>
+          <strong>{{ pagination.count }}</strong>
+        </div>
+        <div class="metric-card metric-card-green">
+          <span class="metric-label">当前页已通过</span>
+          <strong>{{ pageSolvedCount }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <n-card class="filter-card" :bordered="false">
+      <div class="filter-header">
+        <div>
+          <h3>筛选控制台</h3>
+          <p>设置检索条件后点击搜索，分页与筛选会同步到地址栏。</p>
+        </div>
+      </div>
+
+      <n-form label-placement="top">
+        <div class="filter-grid">
+          <n-form-item label="题目 ID / 名称">
             <n-input
               v-model:value="search.search"
+              placeholder="输入关键词后回车"
               @keydown.enter="writeSearchToQuery"
             />
           </n-form-item>
+
           <n-form-item label="题目标签">
             <n-select
               v-model:value="search.tags"
@@ -94,59 +174,62 @@ handleQueryChange();
               filterable
               multiple
               placeholder="请选择标签"
-              style="min-width: 150px"
               :max-tag-count="1"
               :disabled="!tagsOptions.length"
             />
           </n-form-item>
+
           <n-form-item label="题目难度">
             <n-select
               v-model:value="search.difficulty"
-              :options="
-                [{ label: '全部', value: null }].concat(difficultyOptions)
-              "
+              :options="[{ label: '全部', value: null }].concat(difficultyOptions)"
               placeholder="请选择难度"
-              style="min-width: 150px"
             />
           </n-form-item>
-          <n-form-item>
-            <n-button type="primary" @click="writeSearchToQuery">
-              搜索
-            </n-button>
+
+          <n-form-item label="操作" class="action-item">
+            <n-space :size="10">
+              <n-button type="primary" @click="writeSearchToQuery">
+                <template #icon>
+                  <n-icon :component="SearchOutline" />
+                </template>
+                搜索
+              </n-button>
+              <n-button
+                v-if="hasActiveFilter"
+                strong
+                secondary
+                @click="
+                  () => {
+                    search.search = '';
+                    search.tags = [];
+                    search.difficulty = null;
+                    writeSearchToQuery();
+                  }
+                "
+              >
+                重置
+              </n-button>
+            </n-space>
           </n-form-item>
-        </n-form>
-      </div>
-      <router-link
-        :to="{ name: 'tag_edit' }"
-        v-if="store.state.user.permissions.includes('problem')"
-      >
-        <n-button style="float: right; margin-top: 25px" type="primary">
-          <template #icon>
-            <n-icon :component="BookmarksOutline" />
-          </template>
-          标签管理
-        </n-button>
-      </router-link>
-      <router-link
-        :to="{ name: 'problem_create' }"
-        v-if="store.state.user.permissions.includes('problem')"
-      >
-        <n-button
-          style="float: right; margin-top: 25px; margin-right: 10px"
-          type="primary"
-        >
-          <template #icon>
-            <n-icon :component="AddOutline" />
-          </template>
-          创建题目
-        </n-button>
-      </router-link>
-    </n-layout-content>
-    <n-layout-content>
+        </div>
+      </n-form>
+    </n-card>
+
+    <n-card class="table-card" :bordered="false">
+      <template #header>
+        <div class="table-header">
+          <div>
+            <span class="table-title">题目结果</span>
+            <p class="table-subtitle">点击标题可进入详情，状态列可快速跳转提交记录。</p>
+          </div>
+          <span class="table-meta">第 {{ pagination.page }} / {{ Math.max(1, Math.ceil(pagination.count / pagination.pageSize)) }} 页</span>
+        </div>
+      </template>
+
       <ProblemTable :data="data" :loading="loading" />
-    </n-layout-content>
-    <n-layout-content>
-      <div style="margin-top: 30px; text-align: center">
+
+      <div class="pager-wrap">
         <n-pagination
           v-model:page="pagination.page"
           v-model:page-size="pagination.pageSize"
@@ -164,6 +247,285 @@ handleQueryChange();
           "
         />
       </div>
-    </n-layout-content>
-  </n-layout>
+    </n-card>
+  </div>
 </template>
+
+<style scoped>
+.problem-list-page {
+  position: relative;
+  max-width: 1360px;
+  margin: 0 auto;
+  padding: 18px 20px 30px;
+  overflow: hidden;
+  font-family: 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+}
+
+.bg-glow {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(60px);
+  opacity: 0.36;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.bg-glow-left {
+  left: -120px;
+  top: 90px;
+  width: 220px;
+  height: 220px;
+  background: #4cc2ff;
+}
+
+.bg-glow-right {
+  right: -140px;
+  top: 20px;
+  width: 260px;
+  height: 260px;
+  background: #2d6cf5;
+}
+
+.hero-shell,
+.filter-card,
+.table-card {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-shell {
+  margin-bottom: 16px;
+  padding: 24px;
+  border-radius: 20px;
+  border: 1px solid rgba(14, 92, 201, 0.25);
+  background:
+    radial-gradient(circle at 15% 0%, rgba(111, 197, 255, 0.45) 0%, rgba(111, 197, 255, 0) 40%),
+    linear-gradient(130deg, #0f4586 0%, #0c62b6 42%, #1b7fce 100%);
+  box-shadow: 0 18px 36px -20px rgba(10, 57, 110, 0.6);
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr);
+  gap: 16px;
+}
+
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hero-main h1 {
+  margin: 0;
+  font-size: 44px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.hero-main p {
+  margin: 10px 0 0;
+  max-width: 680px;
+  color: rgba(236, 246, 255, 0.9);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.hero-chips {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hero-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  color: #f4f9ff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.hero-side {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.hero-actions {
+  justify-content: flex-end;
+}
+
+.metrics-grid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-card {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  backdrop-filter: blur(2px);
+}
+
+.metric-card-blue {
+  background: rgba(211, 233, 255, 0.86);
+  border-color: rgba(211, 233, 255, 0.9);
+}
+
+.metric-card-green {
+  background: rgba(210, 243, 225, 0.9);
+  border-color: rgba(210, 243, 225, 0.95);
+}
+
+.metric-label {
+  display: block;
+  font-size: 12px;
+  color: #2a4567;
+  margin-bottom: 6px;
+}
+
+.metric-card strong {
+  font-size: 30px;
+  line-height: 1;
+  color: #102138;
+}
+
+.filter-card {
+  margin-bottom: 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #dce8f8;
+  box-shadow: 0 12px 30px -24px rgba(24, 65, 120, 0.4);
+}
+
+.filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.filter-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #142945;
+}
+
+.filter-header p {
+  margin: 5px 0 0;
+  font-size: 13px;
+  color: #637995;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr 1fr auto;
+  gap: 12px;
+}
+
+.action-item {
+  align-self: end;
+}
+
+.table-card {
+  border-radius: 20px;
+  border: 1px solid #d5e5fa;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  box-shadow: 0 16px 34px -24px rgba(15, 65, 120, 0.45);
+}
+
+.table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.table-title {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  color: #15273f;
+}
+
+.table-subtitle {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #6b7f98;
+}
+
+.table-meta {
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #3f628f;
+}
+
+.pager-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 16px;
+}
+
+.table-card :deep(.n-data-table) {
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.table-card :deep(.n-data-table-th) {
+  background: linear-gradient(180deg, #ecf4ff 0%, #e5f0ff 100%);
+  color: #16335b;
+  font-weight: 700;
+}
+
+.table-card :deep(.n-data-table-td) {
+  border-bottom-color: #e8eef7;
+}
+
+.table-card :deep(.n-data-table-tr:hover .n-data-table-td) {
+  background: #eef6ff;
+}
+
+@media (max-width: 1180px) {
+  .hero-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-side {
+    justify-content: flex-start;
+  }
+
+  .hero-actions {
+    justify-content: flex-start;
+  }
+
+  .filter-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .problem-list-page {
+    padding: 12px 12px 20px;
+  }
+
+  .hero-shell {
+    padding: 16px;
+  }
+
+  .hero-main h1 {
+    font-size: 34px;
+  }
+
+  .metrics-grid,
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

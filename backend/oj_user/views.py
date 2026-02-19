@@ -1,12 +1,20 @@
 import json
 import time
+import datetime
+from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
 from django.core.cache import cache
+from django.db.models import Count, Q
+from django.db.models.functions import TruncDate
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django_filters.rest_framework import DjangoFilterBackend
 from oj_backend.permissions import Granted, IsAuthenticatedAndReadOnly, ReadOnly, Captcha
+from oj_problem.models import ProblemSolve
+from oj_submission.models import StatusChoices, Submission
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from rest_framework.filters import OrderingFilter, SearchFilter
@@ -14,7 +22,7 @@ from rest_framework.generics import GenericAPIView, DestroyAPIView
 from rest_framework.pagination import LimitOffsetPagination
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
-from rest_framework.status import HTTP_204_NO_CONTENT, HTTP_401_UNAUTHORIZED
+from rest_framework.status import HTTP_204_NO_CONTENT, HTTP_400_BAD_REQUEST, HTTP_401_UNAUTHORIZED
 from rest_framework.views import APIView
 from rest_framework.viewsets import ReadOnlyModelViewSet, ModelViewSet
 
@@ -167,9 +175,241 @@ class UserViewSet(ModelViewSet):
         user.save()
         return Response(status=HTTP_204_NO_CONTENT)
 
-    @action(detail=False, methods=['get'], url_path='ranking')
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated], url_path='upload-image')
+    def upload_image(self, request):
+        uploaded = request.FILES.get('file') or request.FILES.get('image')
+        if not uploaded:
+            return Response({'error': '请上传图片文件（字段名 file 或 image）'}, status=HTTP_400_BAD_REQUEST)
+
+        content_type = str(getattr(uploaded, 'content_type', '') or '').lower()
+        if not content_type.startswith('image/'):
+            return Response({'error': '仅支持图片文件'}, status=HTTP_400_BAD_REQUEST)
+
+        max_size = 10 * 1024 * 1024
+        if int(getattr(uploaded, 'size', 0) or 0) > max_size:
+            return Response({'error': '图片大小不能超过 10MB'}, status=HTTP_400_BAD_REQUEST)
+
+        ext_map = {
+            'image/jpeg': '.jpg',
+            'image/png': '.png',
+            'image/gif': '.gif',
+            'image/webp': '.webp',
+            'image/bmp': '.bmp',
+            'image/svg+xml': '.svg',
+        }
+        ext = ext_map.get(content_type)
+        if not ext:
+            raw_name = str(getattr(uploaded, 'name', '') or '').lower()
+            if '.' in raw_name:
+                ext = '.' + raw_name.rsplit('.', 1)[-1]
+            else:
+                ext = '.png'
+
+        now = timezone.localtime(timezone.now())
+        image_dir = settings.MEDIA_ROOT / 'markdown_images' / str(now.year) / f'{now.month:02d}'
+        image_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = f'{now.strftime("%Y%m%d%H%M%S")}_{request.user.id}_{uuid4().hex[:10]}{ext}'
+        file_path = image_dir / filename
+
+        with open(file_path, 'wb') as fp:
+            for chunk in uploaded.chunks():
+                fp.write(chunk)
+
+        url = f'/media/markdown_images/{now.year}/{now.month:02d}/{filename}'
+        return Response({'url': url, 'name': filename, 'size': uploaded.size})
+
+    def _activity_daily_counts(self, qs, tz):
+        day = TruncDate('create_time', tzinfo=tz)
+        rows = (
+            qs.annotate(day=day)
+            .values('day')
+            .annotate(count=Count('id'))
+            .order_by('day')
+        )
+        return {row['day'].isoformat(): row['count'] for row in rows if row.get('day') is not None}
+
+    def _max_streak(self, days):
+        if not days:
+            return 0
+        days_sorted = sorted(set(days))
+        best = 1
+        cur = 1
+        prev = days_sorted[0]
+        for d in days_sorted[1:]:
+            if (d - prev).days == 1:
+                cur += 1
+            else:
+                best = max(best, cur)
+                cur = 1
+            prev = d
+        best = max(best, cur)
+        return best
+
+    @action(detail=True, methods=['get'], url_path='activity', permission_classes=[Granted | IsAuthenticatedAndReadOnly])
+    def activity(self, request, pk=None):
+        profile_user = self.get_object()
+        tz_name = request.query_params.get('tz') or 'Asia/Shanghai'
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo('Asia/Shanghai')
+            tz_name = 'Asia/Shanghai'
+
+        activity_type = (request.query_params.get('type') or 'solved').lower()
+        now = timezone.localtime(timezone.now(), timezone=tz)
+
+        year = request.query_params.get('year')
+        if year is None:
+            year = now.year
+        else:
+            try:
+                year = int(year)
+            except Exception:
+                year = now.year
+
+        year_start = datetime.datetime(year, 1, 1, tzinfo=tz)
+        year_end = datetime.datetime(year + 1, 1, 1, tzinfo=tz)
+
+        if activity_type == 'accepted':
+            base_qs = Submission.objects.filter(user=profile_user, status=StatusChoices.ACCEPTED)
+            year_qs = base_qs.filter(create_time__gte=year_start, create_time__lt=year_end)
+            days = self._activity_daily_counts(year_qs, tz)
+            all_time_count = base_qs.count()
+            day_list_all = list(
+                base_qs.annotate(day=TruncDate('create_time', tzinfo=tz))
+                .values_list('day', flat=True)
+                .distinct()
+            )
+        else:
+            base_qs = ProblemSolve.objects.filter(user=profile_user)
+            year_qs = base_qs.filter(create_time__gte=year_start, create_time__lt=year_end)
+            days = self._activity_daily_counts(year_qs, tz)
+            all_time_count = base_qs.count()
+            day_list_all = list(
+                base_qs.annotate(day=TruncDate('create_time', tzinfo=tz))
+                .values_list('day', flat=True)
+                .distinct()
+            )
+
+        last_year_start = now - datetime.timedelta(days=365)
+        last_month_start = now - datetime.timedelta(days=30)
+
+        last_year_count = base_qs.filter(create_time__gte=last_year_start, create_time__lte=now).count()
+        last_month_count = base_qs.filter(create_time__gte=last_month_start, create_time__lte=now).count()
+
+        day_list_last_year = list(
+            base_qs.filter(create_time__gte=last_year_start, create_time__lte=now)
+            .annotate(day=TruncDate('create_time', tzinfo=tz))
+            .values_list('day', flat=True)
+            .distinct()
+        )
+        day_list_last_month = list(
+            base_qs.filter(create_time__gte=last_month_start, create_time__lte=now)
+            .annotate(day=TruncDate('create_time', tzinfo=tz))
+            .values_list('day', flat=True)
+            .distinct()
+        )
+
+        data = {
+            'year': year,
+            'type': activity_type,
+            'tz': tz_name,
+            'days': days,
+            'stats': {
+                'all_time': all_time_count,
+                'last_year': last_year_count,
+                'last_month': last_month_count,
+                'streak_max': self._max_streak([d for d in day_list_all if d is not None]),
+                'streak_last_year_max': self._max_streak([d for d in day_list_last_year if d is not None]),
+                'streak_last_month_max': self._max_streak([d for d in day_list_last_month if d is not None]),
+            },
+        }
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='ranking', permission_classes=[])
     def get_ranking(self, request):
-        ...
+        limit_param = request.query_params.get('limit', 10)
+        try:
+            limit = int(limit_param)
+        except Exception:
+            limit = 10
+        limit = max(1, min(limit, 50))
+
+        class_id = request.query_params.get('class_id')
+        users = User.objects.filter(
+            is_active=True,
+            is_staff=False,
+            is_superuser=False,
+        )
+
+        class_id_value = None
+        if class_id not in [None, '']:
+            from oj_class.models import Class, ClassStudent
+
+            try:
+                class_id_value = int(class_id)
+            except Exception:
+                return Response({'error': 'class_id 非法'}, status=HTTP_400_BAD_REQUEST)
+
+            class_obj = Class.objects.filter(id=class_id_value, is_disbanded=False).first()
+            if not class_obj:
+                return Response({'error': '班级不存在'}, status=HTTP_400_BAD_REQUEST)
+
+            if not request.user.is_authenticated:
+                return Response({'error': '请先登录'}, status=HTTP_401_UNAUTHORIZED)
+
+            if not request.user.is_staff:
+                is_member = ClassStudent.objects.filter(
+                    class_obj=class_obj,
+                    user=request.user,
+                ).exists()
+                if not is_member and class_obj.teacher_id != request.user.id:
+                    return Response({'error': '无权限查看该班级排行榜'}, status=403)
+
+            student_ids = ClassStudent.objects.filter(
+                class_obj=class_obj,
+                role='student',
+            ).values_list('user_id', flat=True)
+            users = users.filter(id__in=student_ids)
+
+        rows = list(
+            users
+            .annotate(
+                solved_count=Count('problem_solve__problem_id', distinct=True),
+                accepted_count=Count('submissions__id', filter=Q(submissions__status=StatusChoices.ACCEPTED), distinct=True),
+            )
+            .filter(solved_count__gt=0)
+            .order_by('-solved_count', '-accepted_count', 'id')[:limit]
+        )
+
+        ranking = []
+        current_rank = 0
+        last_key = None
+        for index, user in enumerate(rows, start=1):
+            key = (user.solved_count, user.accepted_count)
+            if key != last_key:
+                current_rank = index
+                last_key = key
+
+            ranking.append({
+                'rank': current_rank,
+                'user': {
+                    'id': user.id,
+                    'username': user.username,
+                    'real_name': user.real_name,
+                    'avatar': user.avatar,
+                },
+                'solved_count': user.solved_count,
+                'accepted_count': user.accepted_count,
+            })
+
+        return Response({
+            'scope': 'class' if class_id_value else 'global',
+            'class_id': class_id_value,
+            'total': len(ranking),
+            'ranking': ranking,
+        })
 
 
 class LoginView(GenericAPIView):

@@ -12,6 +12,7 @@ class Migration(migrations.Migration):
     dependencies = [
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
         ('oj_problem', '0001_initial'),
+        ('oj_submission', '0001_initial'),
     ]
 
     operations = [

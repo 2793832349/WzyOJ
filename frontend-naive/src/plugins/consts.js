@@ -92,25 +92,42 @@ for (const key in judgeStatus) {
 }
 
 const difficulty = {
-  0: '未设定',
-  1: '入门',
-  2: '普及-',
-  3: '普及/提高-',
-  4: '普及+/提高',
-  5: '提高+/省选-',
-  6: '省选/NOI-',
-  7: 'NOI/NOI+/CTSC',
+  0: '黑铁',
+  1: '青铜',
+  2: '白银',
+  3: '黄金',
+  4: '翡翠',
+  5: '铂金',
+  6: '钻石',
+  7: '大师',
+  8: '宗师',
+  9: '王者',
 };
 
 const difficultyColor = {
-  0: '#BFBFBF',
-  1: '#FE4C61',
-  2: '#F39C11',
-  3: '#FFC116',
-  4: '#52C41A',
-  5: '#3498DB',
-  6: '#9D3BCF',
-  7: '#000000',
+  0: '#4B5563',
+  1: '#CD7F32',
+  2: '#C0C0C0',
+  3: '#FACC15',
+  4: '#10B981',
+  5: '#14B8A6',
+  6: '#3B82F6',
+  7: '#8B5CF6',
+  8: '#EF4444',
+  9: '#F59E0B',
+};
+
+const difficultyBadgeStyle = {
+  0: { background: 'linear-gradient(135deg, #111827 0%, #4B5563 100%)', color: '#F9FAFB', boxShadow: '0 6px 16px rgba(17, 24, 39, 0.28)' },
+  1: { background: 'linear-gradient(135deg, #7C2D12 0%, #CD7F32 100%)', color: '#FFF7ED', boxShadow: '0 6px 16px rgba(124, 45, 18, 0.3)' },
+  2: { background: 'linear-gradient(135deg, #64748B 0%, #D1D5DB 100%)', color: '#0F172A', boxShadow: '0 6px 16px rgba(100, 116, 139, 0.28)' },
+  3: { background: 'linear-gradient(135deg, #B45309 0%, #FACC15 100%)', color: '#1F2937', boxShadow: '0 8px 18px rgba(250, 204, 21, 0.35)' },
+  4: { background: 'linear-gradient(135deg, #065F46 0%, #34D399 100%)', color: '#ECFDF5', boxShadow: '0 8px 18px rgba(16, 185, 129, 0.35)' },
+  5: { background: 'linear-gradient(135deg, #0F766E 0%, #67E8F9 100%)', color: '#ECFEFF', boxShadow: '0 8px 18px rgba(15, 118, 110, 0.35)' },
+  6: { background: 'linear-gradient(135deg, #1E3A8A 0%, #60A5FA 100%)', color: '#EFF6FF', boxShadow: '0 8px 18px rgba(30, 58, 138, 0.35)' },
+  7: { background: 'linear-gradient(135deg, #4C1D95 0%, #A78BFA 100%)', color: '#F5F3FF', boxShadow: '0 8px 18px rgba(76, 29, 149, 0.35)' },
+  8: { background: 'linear-gradient(135deg, #7F1D1D 0%, #F87171 100%)', color: '#FEF2F2', boxShadow: '0 8px 18px rgba(127, 29, 29, 0.36)' },
+  9: { background: 'linear-gradient(135deg, #78350F 0%, #FDE047 45%, #F59E0B 100%)', color: '#1C1917', boxShadow: '0 10px 22px rgba(245, 158, 11, 0.42)' },
 };
 
 const difficultyOptions = [];
@@ -168,6 +185,7 @@ export {
   noMemory,
   difficulty,
   difficultyColor,
+  difficultyBadgeStyle,
   difficultyOptions,
   themeOptions,
   markdownThemeOptions,
