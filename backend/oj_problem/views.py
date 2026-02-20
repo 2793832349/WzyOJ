@@ -4,11 +4,16 @@ import uuid
 import shutil
 import io
 import os
+import json
+import html
+import tempfile
+from pathlib import Path
 from requests import post as http_post
 from zipfile import ZipFile
 
 from django.conf import settings
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import Q
 from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
@@ -35,6 +40,11 @@ from .serializers import (ProblemDetailSerializer, ProblemSerializer,
                           TagsSerializer, TestCaseDetailSerializer,
                           TestCaseUpdateSerializer)
 from oj_contest.models import Contest
+
+try:
+    import yaml
+except Exception:  # pragma: no cover
+    yaml = None
 
 
 def partly_read(file, length, file_size):
@@ -69,6 +79,652 @@ def get_problem_queryset(request):
     return queryset
 
 
+
+HYDRO_MANIFEST_FILE_CANDIDATES = (
+    'problem.yaml',
+    'problem.yml',
+    'problem.json',
+    'config.yaml',
+    'config.yml',
+    'config.json',
+)
+HYDRO_STATEMENT_FILE_CANDIDATES = (
+    'problem_zh.md',
+    'problem.zh.md',
+    'problem_cn.md',
+    'problem.zh-cn.md',
+    'problem_zh-cn.md',
+    'problem_en.md',
+    'problem.en.md',
+    'statement.md',
+    'statement_zh.md',
+    'statement_en.md',
+    'problem.md',
+    'description.md',
+    'readme.md',
+    'README.md',
+)
+HYDRO_TESTDATA_DIR_CANDIDATES = (
+    'testdata',
+    'test_data',
+    'tests',
+    'testcases',
+    'data',
+)
+
+
+def _read_text_with_fallback(path: Path):
+    for encoding in ('utf-8', 'utf-8-sig', 'gb18030', 'gbk', 'latin-1'):
+        try:
+            return path.read_text(encoding=encoding)
+        except Exception:
+            continue
+    return ''
+
+
+def _safe_zip_member_name(name: str):
+    name = str(name or '').replace('\\', '/').strip()
+    if not name:
+        return ''
+    while name.startswith('/'):
+        name = name[1:]
+    if name.endswith('/'):
+        return ''
+    normalized = Path(name)
+    if '..' in normalized.parts:
+        return ''
+    return str(normalized)
+
+
+def _extract_zip_safely(zip_file: ZipFile, target_dir: Path):
+    for member in zip_file.infolist():
+        safe_name = _safe_zip_member_name(member.filename)
+        if not safe_name:
+            continue
+        dst = target_dir / safe_name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        with zip_file.open(member, 'r') as src, dst.open('wb') as out:
+            shutil.copyfileobj(src, out)
+
+
+def _load_manifest(problem_root: Path):
+    for candidate in HYDRO_MANIFEST_FILE_CANDIDATES:
+        path = problem_root / candidate
+        if not path.is_file():
+            continue
+        raw = _read_text_with_fallback(path).strip()
+        if not raw:
+            return {}
+        suffix = path.suffix.lower()
+        try:
+            if suffix == '.json':
+                data = json.loads(raw)
+            else:
+                if yaml is None:
+                    return {}
+                data = yaml.safe_load(raw)
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
+    return {}
+
+
+def _clean_inline_html_text(raw: str):
+    text = html.unescape(str(raw or ''))
+    text = re.sub(r'<[^>]+>', '', text)
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+
+def _html_to_markdown(raw_text: str):
+    if not raw_text:
+        return ''
+
+    text = str(raw_text).replace('\r\n', '\n').replace('\r', '\n')
+    text = re.sub(r'<(script|style)[^>]*>.*?</\1>', '', text, flags=re.IGNORECASE | re.DOTALL)
+
+    def replace_pre_code(match):
+        code = html.unescape(match.group(1) or '')
+        code = code.strip('\n')
+        if not code:
+            return '\n\n'
+        return f"\n\n```\n{code}\n```\n\n"
+
+    text = re.sub(
+        r'<pre[^>]*>\s*<code[^>]*>(.*?)</code>\s*</pre>',
+        replace_pre_code,
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    text = re.sub(r'<pre[^>]*>(.*?)</pre>', replace_pre_code, text, flags=re.IGNORECASE | re.DOTALL)
+
+    def replace_heading(match):
+        level = int(match.group(1))
+        title = _clean_inline_html_text(match.group(2))
+        if not title:
+            return '\n\n'
+        return f"\n\n{'#' * min(max(level, 1), 6)} {title}\n\n"
+
+    text = re.sub(r'<h([1-6])[^>]*>(.*?)</h\1>', replace_heading, text, flags=re.IGNORECASE | re.DOTALL)
+
+    def replace_inline_code(match):
+        content = _clean_inline_html_text(match.group(1))
+        if not content:
+            return ''
+        content = content.replace('`', '\\`')
+        return f'`{content}`'
+
+    text = re.sub(r'<code[^>]*>(.*?)</code>', replace_inline_code, text, flags=re.IGNORECASE | re.DOTALL)
+
+    def replace_li(match):
+        item = _clean_inline_html_text(match.group(1))
+        if not item:
+            return ''
+        return f'- {item}\n'
+
+    text = re.sub(r'<li[^>]*>(.*?)</li>', replace_li, text, flags=re.IGNORECASE | re.DOTALL)
+
+    text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+    text = re.sub(r'</(p|div|section|article|ul|ol|table|thead|tbody|tr)\s*>', '\n', text, flags=re.IGNORECASE)
+
+    text = re.sub(r'<[^>]+>', '', text)
+    text = html.unescape(text)
+
+    text = '\n'.join(line.rstrip() for line in text.split('\n'))
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
+def _normalize_statement_text(raw_text: str):
+    text = str(raw_text or '').strip()
+    if not text:
+        return ''
+    if re.search(r'<\s*(h[1-6]|p|pre|code|div|br|li|ul|ol|table|section|article)\b', text, flags=re.IGNORECASE):
+        converted = _html_to_markdown(text)
+        if converted:
+            return converted
+    return text
+
+
+def _map_heading_to_section(title: str):
+    compact = re.sub(r'[\s:：`~\-—_\|【】\[\]（）()]+', '', str(title or '').strip().lower())
+    if not compact:
+        return 'description'
+
+    if any(key in compact for key in ('背景', 'background')):
+        return 'background'
+    if any(key in compact for key in ('输入格式', '输入描述', 'inputformat', 'inputdescription', '输入')):
+        return 'input_format'
+    if any(key in compact for key in ('输出格式', '输出描述', 'outputformat', 'outputdescription', '输出')):
+        return 'output_format'
+    if any(key in compact for key in ('提示', 'hint', '数据范围', '约束', 'constraints')):
+        return 'hint'
+    if any(key in compact for key in ('样例', '示例', 'sample', 'example')):
+        return 'samples'
+    if any(key in compact for key in ('说明', '描述', '题意', 'problemstatement')):
+        return 'description'
+    return 'description'
+
+
+def _extract_markdown_sections(raw_text: str):
+    sections = {}
+    current = 'description'
+    bucket = []
+
+    def flush(section_name: str, lines):
+        content = '\n'.join(lines).strip()
+        if content:
+            sections[section_name] = content
+
+    for line in (raw_text or '').splitlines():
+        stripped = line.strip()
+        heading_match = re.match(r'^#{1,6}\s*(.+?)\s*$', stripped)
+        if heading_match:
+            flush(current, bucket)
+            bucket = []
+            current = _map_heading_to_section(heading_match.group(1))
+            continue
+        bucket.append(line)
+    flush(current, bucket)
+    return sections
+
+
+def _extract_samples_from_text(sample_text: str):
+    if not sample_text:
+        return []
+
+    pairs = []
+
+    code_blocks = [
+        block.strip('\n')
+        for block in re.findall(r'```[^\n]*\n(.*?)```', sample_text, flags=re.DOTALL)
+        if block.strip()
+    ]
+    if len(code_blocks) >= 2:
+        for idx in range(0, len(code_blocks) - 1, 2):
+            pairs.append((code_blocks[idx], code_blocks[idx + 1]))
+            if len(pairs) >= 3:
+                break
+        if pairs:
+            return pairs
+
+    lines = sample_text.splitlines()
+    current_input = None
+    current_output = None
+
+    for line in lines:
+        stripped = line.strip().lower()
+        if re.match(r'^(样例\s*输入|输入样例|sample\s*input|input)', stripped):
+            if current_input is not None and current_output is not None:
+                pairs.append((current_input.strip(), current_output.strip()))
+            current_input = ''
+            current_output = None
+            continue
+        if re.match(r'^(样例\s*输出|输出样例|sample\s*output|output)', stripped):
+            if current_input is None:
+                current_input = ''
+            current_output = ''
+            continue
+
+        if current_output is None:
+            if current_input is None:
+                continue
+            current_input += line + '\n'
+        else:
+            current_output += line + '\n'
+
+    if current_input is not None and current_output is not None:
+        pairs.append((current_input.strip(), current_output.strip()))
+    return pairs[:3]
+
+
+def _parse_time_limit_ms(value):
+    if value is None:
+        return 1000
+    if isinstance(value, (int, float)):
+        num = float(value)
+        return int(num * 1000) if num <= 20 else int(num)
+    text = str(value).strip().lower()
+    match = re.search(r'([0-9]+(?:\.[0-9]+)?)', text)
+    if not match:
+        return 1000
+    num = float(match.group(1))
+    if 'ms' in text or '毫秒' in text:
+        return int(num)
+    if 's' in text or '秒' in text:
+        return int(num * 1000)
+    return int(num * 1000) if num <= 20 else int(num)
+
+
+def _parse_memory_limit_mb(value):
+    if value is None:
+        return 128
+    if isinstance(value, (int, float)):
+        num = float(value)
+        if num > 1024 * 1024:
+            return max(1, int(num / 1024 / 1024))
+        return max(1, int(num))
+    text = str(value).strip().lower()
+    match = re.search(r'([0-9]+(?:\.[0-9]+)?)', text)
+    if not match:
+        return 128
+    num = float(match.group(1))
+    if 'gb' in text or 'gib' in text or text.endswith('g'):
+        return max(1, int(num * 1024))
+    if 'mb' in text or 'mib' in text or text.endswith('m'):
+        return max(1, int(num))
+    if 'kb' in text or 'kib' in text or text.endswith('k'):
+        return max(1, int(num / 1024))
+    if 'byte' in text or re.fullmatch(r'\s*[0-9]+(?:\.[0-9]+)?\s*b\s*', text):
+        return max(1, int(num / 1024 / 1024))
+    return max(1, int(num))
+
+
+def _normalize_difficulty(value):
+    mapping = {
+        'unset': 0,
+        'unknown': 0,
+        '黑铁': 1,
+        'iron': 1,
+        'bronze': 2,
+        'silver': 3,
+        'gold': 4,
+        'platinum': 5,
+        'diamond': 6,
+        'master': 7,
+        'king': 8,
+    }
+    if value is None:
+        return 0
+    if isinstance(value, (int, float)):
+        return max(0, min(10, int(value)))
+    text = str(value).strip().lower()
+    if text in mapping:
+        return mapping[text]
+    for key, mapped in mapping.items():
+        if key in text:
+            return mapped
+    return 0
+
+
+def _sanitize_case_name(raw_name: str, used_names: set):
+    base = re.sub(r'[^0-9a-zA-Z_.-]+', '_', raw_name.strip().replace('/', '__').replace('\\', '__'))
+    base = base.strip('_.') or 'case'
+    candidate = base
+    index = 2
+    while candidate in used_names:
+        candidate = f'{base}_{index}'
+        index += 1
+    used_names.add(candidate)
+    return candidate
+
+
+def _build_case_score(total_case: int, index: int):
+    if total_case <= 0:
+        return 0
+    base = 100 // total_case
+    remainder = 100 % total_case
+    return base + (1 if index < remainder else 0)
+
+
+def _resolve_test_data_dir(problem_root: Path, manifest: dict):
+    for key in ('testdata', 'test_data', 'tests', 'testcases', 'data'):
+        value = manifest.get(key)
+        if isinstance(value, str):
+            candidate = (problem_root / value).resolve()
+            if candidate.is_dir() and str(candidate).startswith(str(problem_root.resolve())):
+                if any(f.suffix.lower() == '.in' for f in candidate.rglob('*') if f.is_file()):
+                    return candidate
+
+    for dirname in HYDRO_TESTDATA_DIR_CANDIDATES:
+        candidate = problem_root / dirname
+        if candidate.is_dir() and any(f.suffix.lower() == '.in' for f in candidate.rglob('*') if f.is_file()):
+            return candidate
+
+    if any(f.suffix.lower() == '.in' for f in problem_root.iterdir() if f.is_file()):
+        return problem_root
+
+    nested = []
+    for item in problem_root.rglob('*'):
+        if item.is_dir() and any(f.suffix.lower() == '.in' for f in item.iterdir() if f.is_file()):
+            nested.append(item)
+    if nested:
+        nested.sort(key=lambda x: len(x.parts))
+        return nested[0]
+    return None
+
+
+def _resolve_manifest_statement_candidates(problem_root: Path, manifest: dict):
+    raw_candidates = []
+
+    for key in (
+        'statement',
+        'statement_file',
+        'problem_file',
+        'description_file',
+        'content_file',
+        'markdown',
+        'md',
+    ):
+        value = manifest.get(key)
+        if isinstance(value, str) and value.strip():
+            raw_candidates.append(value.strip())
+
+    statements = manifest.get('statements')
+    if isinstance(statements, dict):
+        preferred_locales = ('zh', 'zh-cn', 'zh_hans', 'cn', 'en')
+        for locale in preferred_locales:
+            value = statements.get(locale)
+            if isinstance(value, str) and value.strip():
+                raw_candidates.append(value.strip())
+        for value in statements.values():
+            if isinstance(value, str) and value.strip():
+                raw_candidates.append(value.strip())
+
+    normalized = []
+    seen = set()
+    root = problem_root.resolve()
+    for rel in raw_candidates:
+        safe_rel = _safe_zip_member_name(rel)
+        if not safe_rel:
+            continue
+        candidate = (problem_root / safe_rel).resolve()
+        if not str(candidate).startswith(str(root)):
+            continue
+        if not candidate.is_file():
+            continue
+        if candidate.suffix.lower() != '.md':
+            continue
+        key = str(candidate)
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(candidate)
+    return normalized
+
+
+def _resolve_statement_file(problem_root: Path, manifest: dict):
+    manifest_candidates = _resolve_manifest_statement_candidates(problem_root, manifest)
+    if manifest_candidates:
+        return manifest_candidates[0]
+
+    for candidate in HYDRO_STATEMENT_FILE_CANDIDATES:
+        path = problem_root / candidate
+        if path.is_file():
+            return path
+
+    markdown_files = [item for item in problem_root.iterdir() if item.is_file() and item.suffix.lower() == '.md']
+    if not markdown_files:
+        return None
+
+    keyword_priority = ('problem', 'statement', 'description', '题面', '题目', 'readme')
+
+    def score(path: Path):
+        name = path.name.lower()
+        for index, key in enumerate(keyword_priority):
+            if key in name:
+                return (index, len(name), name)
+        return (len(keyword_priority), len(name), name)
+
+    markdown_files.sort(key=score)
+    return markdown_files[0]
+
+
+def _collect_case_pairs(test_data_dir: Path):
+    case_pairs = []
+    for in_file in sorted(test_data_dir.rglob('*.in')):
+        rel = in_file.relative_to(test_data_dir)
+        base_rel = rel.with_suffix('')
+        ans_file = test_data_dir / base_rel.with_suffix('.ans')
+        out_file = test_data_dir / base_rel.with_suffix('.out')
+        output = ans_file if ans_file.is_file() else out_file if out_file.is_file() else None
+        if output is None:
+            continue
+        case_pairs.append((base_rel.as_posix(), in_file, output))
+    return case_pairs
+
+
+def _is_problem_root(path: Path):
+    file_names = {i.name.lower() for i in path.iterdir() if i.is_file()}
+    dir_names = {i.name.lower() for i in path.iterdir() if i.is_dir()}
+
+    if any(i in file_names for i in HYDRO_MANIFEST_FILE_CANDIDATES):
+        return True
+    if any(i in file_names for i in (name.lower() for name in HYDRO_STATEMENT_FILE_CANDIDATES)):
+        return True
+    if any(i in dir_names for i in HYDRO_TESTDATA_DIR_CANDIDATES):
+        return True
+    if any(i.suffix.lower() == '.in' for i in path.iterdir() if i.is_file()):
+        return True
+    return False
+
+
+def _find_problem_roots(work_root: Path):
+    candidates = []
+    if _is_problem_root(work_root):
+        candidates.append(work_root)
+
+    for item in work_root.iterdir():
+        if item.is_dir() and _is_problem_root(item):
+            candidates.append(item)
+
+    if not candidates:
+        for item in work_root.rglob('*'):
+            if item.is_dir() and _is_problem_root(item):
+                candidates.append(item)
+
+    candidates = sorted(set(candidates), key=lambda p: (len(p.parts), str(p)))
+    selected = []
+    for candidate in candidates:
+        if any(str(candidate).startswith(str(parent) + os.sep) for parent in selected):
+            continue
+        selected.append(candidate)
+    return selected
+
+
+def _import_hydro_problem_root(problem_root: Path):
+    manifest = _load_manifest(problem_root)
+
+    statement_text = ''
+    statement_file = _resolve_statement_file(problem_root, manifest)
+    if statement_file is not None:
+        statement_text = _read_text_with_fallback(statement_file)
+
+    statement_markdown = _normalize_statement_text(statement_text)
+    sections = _extract_markdown_sections(statement_markdown)
+
+    title = str(manifest.get('title') or manifest.get('name') or problem_root.name).strip()
+    if not title:
+        title = 'Hydro 导入题目'
+
+    manifest_background = _normalize_statement_text(str(manifest.get('background') or ''))
+    manifest_description = _normalize_statement_text(str(manifest.get('description') or manifest.get('desc') or ''))
+    manifest_input = _normalize_statement_text(str(manifest.get('input') or manifest.get('input_format') or ''))
+    manifest_output = _normalize_statement_text(str(manifest.get('output') or manifest.get('output_format') or ''))
+    manifest_hint = _normalize_statement_text(str(manifest.get('hint') or manifest.get('tips') or ''))
+
+    background = str(manifest_background or sections.get('background') or '').strip()
+    description = str(manifest_description or sections.get('description') or statement_markdown or '').strip()
+    input_format = str(manifest_input or sections.get('input_format') or '').strip()
+    output_format = str(manifest_output or sections.get('output_format') or '').strip()
+    hint = str(manifest_hint or sections.get('hint') or '').strip()
+
+    sample_list = []
+    manifest_samples = manifest.get('samples')
+    if isinstance(manifest_samples, list):
+        for item in manifest_samples:
+            if isinstance(item, dict):
+                sample_in = str(item.get('input') or item.get('in') or '').strip()
+                sample_out = str(item.get('output') or item.get('out') or '').strip()
+                if sample_in or sample_out:
+                    sample_list.append((sample_in, sample_out))
+            if len(sample_list) >= 3:
+                break
+
+    if not sample_list:
+        sample_list = _extract_samples_from_text(sections.get('samples', ''))
+
+    while len(sample_list) < 3:
+        sample_list.append(('', ''))
+
+    raw_tags = manifest.get('tag') or manifest.get('tags') or []
+    if isinstance(raw_tags, str):
+        raw_tags = [i.strip() for i in re.split(r'[;,，\s]+', raw_tags) if i.strip()]
+    elif not isinstance(raw_tags, list):
+        raw_tags = []
+    tags = []
+    for item in raw_tags:
+        name = str(item).strip()
+        if name:
+            tags.append(name[:50])
+
+    test_data_dir = _resolve_test_data_dir(problem_root, manifest)
+    if test_data_dir is None:
+        raise ValueError('未找到测试数据目录（需要 .in/.out 或 .in/.ans）')
+
+    case_pairs = _collect_case_pairs(test_data_dir)
+    if not case_pairs:
+        raise ValueError('未找到有效测试点（需要成对 .in 和 .out/.ans）')
+
+    problem = None
+    test_case = None
+    data_dir = None
+
+    try:
+        with transaction.atomic():
+            problem = Problem.objects.create(
+                title=title[:50],
+                background=background,
+                description=description,
+                input_format=input_format,
+                output_format=output_format,
+                hint=hint,
+                sample_1={'input': sample_list[0][0], 'output': sample_list[0][1]},
+                sample_2={'input': sample_list[1][0], 'output': sample_list[1][1]},
+                sample_3={'input': sample_list[2][0], 'output': sample_list[2][1]},
+                time_limit=_parse_time_limit_ms(
+                    manifest.get('time_limit_ms')
+                    or manifest.get('time_limit')
+                    or manifest.get('timeLimit')
+                    or manifest.get('timelimit')
+                    or manifest.get('time')
+                ),
+                memory_limit=_parse_memory_limit_mb(
+                    manifest.get('memory_limit_mb')
+                    or manifest.get('memory_limit')
+                    or manifest.get('memoryLimit')
+                    or manifest.get('memory')
+                ),
+                difficulty=_normalize_difficulty(manifest.get('difficulty')),
+            )
+
+            if tags:
+                tag_instances = []
+                for tag_name in tags:
+                    tag_obj, _ = Tags.objects.get_or_create(name=tag_name)
+                    tag_instances.append(tag_obj)
+                problem.tags.set(tag_instances)
+
+            test_case = TestCase.objects.create(problem=problem)
+            data_dir = settings.TEST_DATA_ROOT / str(test_case.test_case_id)
+            data_dir.mkdir(parents=True, exist_ok=True)
+
+            config = []
+            used_case_names = set()
+            for index, (raw_case_name, in_file, out_file) in enumerate(case_pairs):
+                case_name = _sanitize_case_name(raw_case_name, used_case_names)
+                shutil.copyfile(in_file, data_dir / f'{case_name}.in')
+                shutil.copyfile(out_file, data_dir / f'{case_name}.ans')
+
+                file_data = out_file.read_bytes()
+                normalized = b'\n'.join(map(bytes.rstrip, file_data.rstrip().splitlines()))
+                file_hash = hashlib.md5(normalized).hexdigest()
+                (data_dir / f'{case_name}.md5').write_text(file_hash, encoding='utf-8')
+
+                config.append({
+                    'name': case_name,
+                    'score': _build_case_score(len(case_pairs), index),
+                    'subcheck': None,
+                })
+
+            test_case.test_case_config = config
+            test_case.save(update_fields=['test_case_config'])
+
+    except Exception:
+        if data_dir and data_dir.exists():
+            shutil.rmtree(data_dir, ignore_errors=True)
+        if problem and problem.id:
+            problem.delete()
+        raise
+
+    return {
+        'id': problem.id,
+        'title': problem.title,
+        'cases': len(case_pairs),
+        'root': problem_root.name,
+    }
+
+
 class ProblemPagination(LimitOffsetPagination):
     default_limit = 50
     max_limit = 200
@@ -92,6 +748,57 @@ class ProblemViewSet(ModelViewSet):
         if self.action == 'list':
             return ProblemSerializer
         return ProblemDetailSerializer
+
+    @action(detail=False, methods=['post'], url_path='import-hydro')
+    def import_hydro(self, request):
+        archive = request.FILES.get('file') or request.FILES.get('archive')
+        if not archive:
+            return Response({'detail': '请上传 Hydro 导出 zip 文件。'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file_name = str(getattr(archive, 'name', '') or '').lower()
+        if file_name and not file_name.endswith('.zip'):
+            return Response({'detail': '仅支持 .zip 文件。'}, status=status.HTTP_400_BAD_REQUEST)
+
+        imported = []
+        failed = []
+
+        try:
+            with tempfile.TemporaryDirectory(prefix='hydro_import_') as tmp_dir:
+                tmp_root = Path(tmp_dir)
+                with ZipFile(archive, 'r') as zip_file:
+                    _extract_zip_safely(zip_file, tmp_root)
+
+                roots = _find_problem_roots(tmp_root)
+                if not roots:
+                    return Response(
+                        {'detail': '压缩包中未识别到 Hydro 题目结构。'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                for root in roots:
+                    try:
+                        imported.append(_import_hydro_problem_root(root))
+                    except Exception as exc:
+                        try:
+                            root_name = str(root.relative_to(tmp_root))
+                        except Exception:
+                            root_name = root.name
+                        failed.append({'root': root_name, 'error': str(exc)})
+        except Exception as exc:
+            return Response({'detail': f'导入失败：{exc}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = {
+            'imported_count': len(imported),
+            'failed_count': len(failed),
+            'imported': imported,
+            'failed': failed,
+        }
+
+        if imported and not failed:
+            return Response(payload, status=status.HTTP_201_CREATED)
+        if imported and failed:
+            return Response(payload, status=status.HTTP_200_OK)
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['get'], url_path='adjacent')
     def adjacent(self, request, pk=None):

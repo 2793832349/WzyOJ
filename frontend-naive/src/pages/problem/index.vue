@@ -6,7 +6,7 @@ import store from '@/store';
 import { difficultyOptions } from '@/plugins/consts';
 import ProblemTable from '@/components/ProblemTable.vue';
 import { useRoute } from 'vue-router';
-import { BookmarksOutline, AddOutline, SearchOutline } from '@vicons/ionicons5';
+import { BookmarksOutline, AddOutline, SearchOutline, CloudUploadOutline } from '@vicons/ionicons5';
 import { _writeSearchToQuery } from '@/plugins/utils';
 
 const route = useRoute();
@@ -50,6 +50,57 @@ const pageAccepted = computed(() => {
 const pageSubmissions = computed(() => {
   return data.value.reduce((sum, item) => sum + Number(item.submission_count || 0), 0);
 });
+
+const hydroImportModalVisible = ref(false);
+const hydroImportFileList = ref([]);
+const hydroImportLoading = ref(false);
+
+const closeHydroImportModal = () => {
+  if (hydroImportLoading.value) return;
+  hydroImportModalVisible.value = false;
+};
+
+const handleHydroImport = async () => {
+  const fileInfo = hydroImportFileList.value[0];
+  const rawFile = fileInfo?.file;
+  const uploadFile = rawFile?.file || rawFile;
+  if (!uploadFile) {
+    window.$message.warning('请先选择 Hydro 导出 zip 文件');
+    return;
+  }
+
+  hydroImportLoading.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('file', uploadFile);
+
+    const res = await Axios.post('/problem/import-hydro/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    const successCount = Number(res?.imported_count || 0);
+    const failedCount = Number(res?.failed_count || 0);
+    if (failedCount > 0) {
+      const firstFailed = Array.isArray(res?.failed) ? res.failed[0] : null;
+      const tip = firstFailed
+        ? `，首个失败：${firstFailed.root || '-'} ${firstFailed.error || ''}`
+        : '';
+      window.$message.warning(`导入完成：成功 ${successCount}，失败 ${failedCount}${tip}`);
+    } else {
+      window.$message.success(`导入完成：成功 ${successCount} 题`);
+    }
+
+    if (successCount > 0) {
+      hydroImportModalVisible.value = false;
+      hydroImportFileList.value = [];
+      handleQueryChange();
+    }
+  } finally {
+    hydroImportLoading.value = false;
+  }
+};
 
 const handleQueryChange = () => {
   if (route.name !== 'problem_list') return;
@@ -124,6 +175,12 @@ handleQueryChange();
                 标签管理
               </n-button>
             </router-link>
+            <n-button tertiary type="warning" @click="hydroImportModalVisible = true">
+              <template #icon>
+                <n-icon :component="CloudUploadOutline" />
+              </template>
+              导入 Hydro
+            </n-button>
             <router-link :to="{ name: 'problem_create' }">
               <n-button type="primary">
                 <template #icon>
@@ -248,6 +305,42 @@ handleQueryChange();
         />
       </div>
     </n-card>
+
+
+    <n-modal
+      v-model:show="hydroImportModalVisible"
+      preset="card"
+      title="导入 Hydro 题目"
+      :mask-closable="!hydroImportLoading"
+      style="width: min(92vw, 620px)"
+      @after-leave="hydroImportFileList = []"
+    >
+      <n-space vertical :size="12">
+        <n-alert type="info" :show-icon="false">
+          支持 Hydro 导出 zip（单题或多题目录）。会自动创建题目并导入测试点（.in + .out/.ans）。
+        </n-alert>
+
+        <n-upload
+          v-model:file-list="hydroImportFileList"
+          :default-upload="false"
+          :max="1"
+          accept=".zip,application/zip"
+        >
+          <n-upload-dragger>
+            <div style="font-size: 14px; color: #3f5878">点击或拖拽 Hydro zip 到这里</div>
+          </n-upload-dragger>
+        </n-upload>
+      </n-space>
+
+      <template #footer>
+        <n-space justify="end">
+          <n-button :disabled="hydroImportLoading" @click="closeHydroImportModal">取消</n-button>
+          <n-button type="primary" :loading="hydroImportLoading" @click="handleHydroImport">
+            开始导入
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
   </div>
 </template>
 

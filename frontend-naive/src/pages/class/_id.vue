@@ -45,7 +45,7 @@
           </div>
 
           <n-spin :show="dashboardLoading">
-            <n-grid :x-gap="12" :y-gap="12" cols="1 s:2 m:4" responsive="screen">
+            <n-grid :x-gap="12" :y-gap="12" cols="1 s:2 m:5" responsive="screen">
               <n-gi v-for="card in dashboardOverviewCards" :key="card.key">
                 <n-card size="small" :bordered="false" class="dashboard-overview-card">
                   <div class="dashboard-overview-card__label">{{ card.label }}</div>
@@ -106,6 +106,27 @@
                   <div class="dashboard-student-item__meta">
                     完成 {{ item.solved_count }}/{{ item.total_active_problems }} · 尝试 {{ item.attempted_count }} 题 · 完成率 {{ formatPercent(item.completion_rate) }}
                   </div>
+                </div>
+              </n-space>
+            </n-card>
+
+            <n-card size="small" :bordered="false" class="dashboard-panel" style="margin-top: 12px">
+              <template #header>知识点掌握图谱（按掌握率）</template>
+              <n-empty v-if="dashboardData.knowledge_mastery.length === 0" description="暂无知识点标签数据" />
+              <n-space v-else vertical size="small">
+                <div
+                  v-for="item in dashboardData.knowledge_mastery.slice(0, 12)"
+                  :key="item.tag_name"
+                  class="dashboard-knowledge-item"
+                >
+                  <div class="dashboard-knowledge-item__top">
+                    <div class="dashboard-knowledge-item__title">{{ item.tag_name }}</div>
+                    <div class="dashboard-knowledge-item__rate">{{ formatPercent(item.mastery_rate) }}</div>
+                  </div>
+                  <div class="dashboard-knowledge-item__meta">
+                    题目 {{ item.problem_count }} · 掌握学生 {{ item.mastered_students }}/{{ dashboardData.overview.student_count || 0 }} · 参与率 {{ formatPercent(item.participation_rate) }}
+                  </div>
+                  <n-progress type="line" :show-indicator="false" :percentage="item.mastery_rate || 0" />
                 </div>
               </n-space>
             </n-card>
@@ -827,12 +848,14 @@ const createDefaultDashboardData = () => ({
     expired_assignment_count: 0,
     tracked_problem_count: 0,
     active_problem_count: 0,
+    tracked_tag_count: 0,
     total_submissions: 0,
     last_7d_submissions: 0,
   },
   recent_assignments: [],
   stuck_problems: [],
   at_risk_students: [],
+  knowledge_mastery: [],
   generated_at: null,
 });
 
@@ -959,6 +982,7 @@ const dashboardOverviewCards = computed(() => {
     { key: "student_count", label: "班级学生", value: overview.student_count || 0 },
     { key: "assignment_count", label: "作业总数", value: overview.assignment_count || 0 },
     { key: "active_assignment_count", label: "进行中作业", value: overview.active_assignment_count || 0 },
+    { key: "tracked_tag_count", label: "知识点", value: overview.tracked_tag_count || 0 },
     { key: "last_7d_submissions", label: "近7天提交", value: overview.last_7d_submissions || 0 },
   ];
 });
@@ -2113,6 +2137,38 @@ onMounted(() => {
   font-size: 14px;
   font-weight: 600;
   color: #2a3831;
+}
+
+.dashboard-knowledge-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #e7ecea;
+  background: #fff;
+}
+
+.dashboard-knowledge-item__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-knowledge-item__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2a3831;
+}
+
+.dashboard-knowledge-item__rate {
+  font-size: 12px;
+  font-weight: 700;
+  color: #1f3550;
+}
+
+.dashboard-knowledge-item__meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #60706a;
 }
 
 .assignment-pane {

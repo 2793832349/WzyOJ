@@ -232,6 +232,7 @@ class ClassViewSet(viewsets.ModelViewSet):
 
         from collections import defaultdict
         from datetime import timedelta
+        from math import ceil
         from django.utils import timezone
         from oj_submission.models import Submission
 
@@ -403,6 +404,56 @@ class ClassViewSet(viewsets.ModelViewSet):
             at_risk_students.sort(key=lambda item: (item['completion_rate'], -item['attempted_count'], item['username']))
             at_risk_students = at_risk_students[:8]
 
+        tag_problem_ids = defaultdict(set)
+        tracked_tag_count = 0
+        knowledge_mastery = []
+
+        if all_problem_ids and student_count > 0:
+            tagged_problems = Problem.objects.filter(id__in=list(all_problem_ids)).prefetch_related('tags')
+            for problem in tagged_problems:
+                tags = list(problem.tags.all())
+                if not tags:
+                    continue
+                for tag in tags:
+                    tag_problem_ids[tag.name].add(problem.id)
+
+            tracked_tag_count = len(tag_problem_ids)
+
+            for tag_name, tag_problem_set in tag_problem_ids.items():
+                if not tag_problem_set:
+                    continue
+
+                problem_count = len(tag_problem_set)
+                total_pairs = student_count * problem_count
+                solved_pairs = 0
+                attempted_pairs = 0
+                mastered_students = 0
+                mastery_threshold = max(1, ceil(problem_count * 0.6))
+
+                for student_id in student_ids:
+                    solved_count = len(solved_map.get(student_id, set()) & tag_problem_set)
+                    attempted_count = len(attempted_map.get(student_id, set()) & tag_problem_set)
+                    solved_pairs += solved_count
+                    attempted_pairs += attempted_count
+                    if solved_count >= mastery_threshold:
+                        mastered_students += 1
+
+                mastery_rate = round(solved_pairs * 100 / total_pairs, 1) if total_pairs else 0
+                participation_rate = round(attempted_pairs * 100 / total_pairs, 1) if total_pairs else 0
+                mastered_student_rate = round(mastered_students * 100 / student_count, 1) if student_count else 0
+
+                knowledge_mastery.append({
+                    'tag_name': tag_name,
+                    'problem_count': problem_count,
+                    'mastery_rate': mastery_rate,
+                    'participation_rate': participation_rate,
+                    'mastered_students': mastered_students,
+                    'mastered_student_rate': mastered_student_rate,
+                    'mastery_threshold': mastery_threshold,
+                })
+
+            knowledge_mastery.sort(key=lambda item: (item['mastery_rate'], item['participation_rate'], -item['problem_count'], item['tag_name']))
+
         return Response({
             'overview': {
                 'student_count': student_count,
@@ -411,15 +462,16 @@ class ClassViewSet(viewsets.ModelViewSet):
                 'expired_assignment_count': expired_assignment_count,
                 'tracked_problem_count': len(all_problem_ids),
                 'active_problem_count': len(active_problem_ids),
+                'tracked_tag_count': tracked_tag_count,
                 'total_submissions': total_submissions,
                 'last_7d_submissions': last_7d_submissions,
             },
             'recent_assignments': recent_assignments,
             'stuck_problems': stuck_problems,
             'at_risk_students': at_risk_students,
+            'knowledge_mastery': knowledge_mastery,
             'generated_at': now.isoformat(),
         })
-
     @action(detail=True, methods=['get'], url_path='student-feedback')
     def student_feedback(self, request, pk=None):
         """单个学生学情反馈（教师视角）"""

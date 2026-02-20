@@ -53,7 +53,7 @@ class Problem(models.Model):
                                   blank=True)
     difficulty = models.IntegerField(_('difficulty'),
                                      default=0,
-                                     help_text=_('level: 0 to 9, corresponds to black iron ~ king'))
+                                     help_text=_('level: 0 to 10, corresponds to unset ~ king'))
     time_limit = models.IntegerField(_('time limit (ms)'), default=1000)  # ms
     memory_limit = models.IntegerField(_('memory limit (MB)'),
                                        default=128)  # MB

@@ -143,6 +143,7 @@ cppGenerator.init = function (ws) {
     }
   }
   cppGenerator._declaredVarNames = declared;
+  cppGenerator._procedureDefs = new Map();
 };
 
 cppGenerator.finish = function (code) {
@@ -247,11 +248,15 @@ cppGenerator.finish = function (code) {
         .join('\n')
     : '';
   const header = `#include <bits/stdc++.h>\nusing namespace std;\n\n`;
+  const procedureDefs = cppGenerator._procedureDefs && cppGenerator._procedureDefs.size
+    ? Array.from(cppGenerator._procedureDefs.values()).join('\n\n') + '\n\n'
+    : '';
   const mainStart = `int main(){\n  ios::sync_with_stdio(false);\n  cin.tie(nullptr);\n`;
   const mainEnd = `\n  return 0;\n}`;
 
   const combined = [
     header,
+    procedureDefs,
     mainStart,
     declared ? declared + '\n' : '',
     indentedBody ? indentedBody + '\n' : '',
@@ -576,10 +581,34 @@ Blockly.common.defineBlocksWithJsonArray([
     ],
     previousStatement: null,
     nextStatement: null,
-    colour: 210,
+    colour: 25,
   },
   {
-    type: 'io_println',
+    type: 'io_read_int',
+    message0: '读入一个整数',
+    output: 'Number',
+    colour: 25,
+  },
+  {
+    type: 'io_read_float',
+    message0: '读入一个浮点数',
+    output: 'Number',
+    colour: 25,
+  },
+  {
+    type: 'io_read_string',
+    message0: '读入一个字符串',
+    output: 'String',
+    colour: 25,
+  },
+  {
+    type: 'io_read_line',
+    message0: '读入一行',
+    output: 'String',
+    colour: 25,
+  },
+  {
+    type: 'io_print',
     message0: '输出 %1',
     args0: [
       {
@@ -589,7 +618,20 @@ Blockly.common.defineBlocksWithJsonArray([
     ],
     previousStatement: null,
     nextStatement: null,
-    colour: 210,
+    colour: 25,
+  },
+  {
+    type: 'io_println',
+    message0: '输出 %1 并换行',
+    args0: [
+      {
+        type: 'input_value',
+        name: 'VALUE',
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    colour: 25,
   },
 ]);
 
@@ -598,98 +640,396 @@ cppGenerator.forBlock['io_read'] = function (block) {
   return `cin >> ${varName};`;
 };
 
+cppGenerator.forBlock['io_read_int'] = function (_block) {
+  return [`([&](){ long long __x; cin >> __x; return __x; })()`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['io_read_float'] = function (_block) {
+  return [`([&](){ double __x; cin >> __x; return __x; })()`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['io_read_string'] = function (_block) {
+  return [`([&](){ string __s; cin >> __s; return __s; })()`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['io_read_line'] = function (_block) {
+  return [`([&](){ string __s; getline(cin >> ws, __s); return __s; })()`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['io_print'] = function (block) {
+  const val = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || '0';
+  return `cout << ${val};`;
+};
+
 cppGenerator.forBlock['io_println'] = function (block) {
   const val = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || '0';
   return `cout << ${val} << '\\n';`;
 };
 
+const toCppStringLiteral = (val) => JSON.stringify((val ?? '').toString());
+
+const asStringExpr = (expr) => `([&](){ std::ostringstream __oss; __oss << (${expr}); return __oss.str(); })()`;
+
+const asSimpleIdentifier = (expr) => {
+  const m = (expr || '').trim().match(/^[A-Za-z_]\w*$/);
+  return m ? m[0] : null;
+};
+
+const listIndexExpr = (where, listExpr, atExpr) => {
+  switch (where) {
+    case 'FIRST':
+      return '0';
+    case 'LAST':
+      return `(long long)(${listExpr}.size()) - 1`;
+    case 'FROM_END':
+      return `(long long)(${listExpr}.size()) - (${atExpr})`;
+    case 'RANDOM':
+      return `(long long)(rand() % ${listExpr}.size())`;
+    case 'FROM_START':
+    default:
+      return `(${atExpr}) - 1`;
+  }
+};
+
+cppGenerator.forBlock['logic_boolean'] = function (block) {
+  return [block.getFieldValue('BOOL') === 'TRUE' ? 'true' : 'false', cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['logic_null'] = function (_block) {
+  return ['nullptr', cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['logic_ternary'] = function (block) {
+  const condition = cppGenerator.valueToCode(block, 'IF', cppGenerator.ORDER_NONE) || 'false';
+  const thenExpr = cppGenerator.valueToCode(block, 'THEN', cppGenerator.ORDER_NONE) || '0';
+  const elseExpr = cppGenerator.valueToCode(block, 'ELSE', cppGenerator.ORDER_NONE) || '0';
+  return [`((${condition}) ? (${thenExpr}) : (${elseExpr}))`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['controls_repeat_ext'] = function (block) {
+  const repeats = block.getInput('TIMES')
+    ? cppGenerator.valueToCode(block, 'TIMES', cppGenerator.ORDER_NONE) || '0'
+    : Number(block.getFieldValue('TIMES')) || '0';
+  const branch = cppGenerator.statementToCode(block, 'DO');
+  const loopVar = cppGenerator.nameDB_.getDistinctName('count', Blockly.VARIABLE_CATEGORY_NAME);
+  return `for (long long ${loopVar} = 0; ${loopVar} < (${repeats}); ++${loopVar}) {\n${branch}}`;
+};
+
+cppGenerator.forBlock['controls_forEach'] = function (block) {
+  const itemName = toVarName(block);
+  const listExpr = cppGenerator.valueToCode(block, 'LIST', cppGenerator.ORDER_NONE) || 'vector<long long>{}';
+  const branch = cppGenerator.statementToCode(block, 'DO');
+  return `for (auto ${itemName} : ${listExpr}) {\n${branch}}`;
+};
+
+cppGenerator.forBlock['controls_flow_statements'] = function (block) {
+  return block.getFieldValue('FLOW') === 'BREAK' ? 'break;' : 'continue;';
+};
+
+cppGenerator.forBlock['math_random_float'] = function (_block) {
+  return ['((double)rand() / (double)RAND_MAX)', cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['math_atan2'] = function (block) {
+  const x = cppGenerator.valueToCode(block, 'X', cppGenerator.ORDER_NONE) || '0';
+  const y = cppGenerator.valueToCode(block, 'Y', cppGenerator.ORDER_NONE) || '0';
+  return [`(atan2(${y}, ${x}) * 180.0 / M_PI)`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['text'] = function (block) {
+  return [toCppStringLiteral(block.getFieldValue('TEXT')), cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['text_join'] = function (block) {
+  const itemCount = block.itemCount_ || 0;
+  if (itemCount === 0) return ['""', cppGenerator.ORDER_ATOMIC];
+  const parts = [];
+  for (let i = 0; i < itemCount; i++) {
+    const part = cppGenerator.valueToCode(block, `ADD${i}`, cppGenerator.ORDER_NONE) || '""';
+    parts.push(asStringExpr(part));
+  }
+  return [parts.join(' + '), cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['text_length'] = function (block) {
+  const textExpr = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || '""';
+  return [`((long long)${asStringExpr(textExpr)}.size())`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['text_isEmpty'] = function (block) {
+  const textExpr = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || '""';
+  return [`(${asStringExpr(textExpr)}.empty())`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['text_indexOf'] = function (block) {
+  const textExpr = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || '""';
+  const findExpr = cppGenerator.valueToCode(block, 'FIND', cppGenerator.ORDER_NONE) || '""';
+  const end = block.getFieldValue('END') || 'FIRST';
+  const finder = end === 'LAST' ? 'rfind' : 'find';
+  return [
+    `([&](){ string __t = ${asStringExpr(textExpr)}; string __f = ${asStringExpr(findExpr)}; auto __p = __t.${finder}(__f); return __p == string::npos ? 0LL : (long long)__p + 1; })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['text_charAt'] = function (block) {
+  const textExpr = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || '""';
+  const where = block.getFieldValue('WHERE') || 'FROM_START';
+  const at = cppGenerator.valueToCode(block, 'AT', cppGenerator.ORDER_NONE) || '1';
+  const idx = where === 'FIRST'
+    ? '0'
+    : where === 'LAST'
+      ? '(long long)__t.size() - 1'
+      : where === 'FROM_END'
+        ? `(long long)__t.size() - (${at})`
+        : where === 'RANDOM'
+          ? '(long long)(rand() % __t.size())'
+          : `(${at}) - 1`;
+  return [
+    `([&](){ string __t = ${asStringExpr(textExpr)}; if (__t.empty()) return string(""); long long __idx = ${idx}; if (__idx < 0 || __idx >= (long long)__t.size()) return string(""); return string(1, __t[(size_t)__idx]); })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['text_getSubstring'] = function (block) {
+  const textExpr = cppGenerator.valueToCode(block, 'STRING', cppGenerator.ORDER_NONE) || '""';
+  const where1 = block.getFieldValue('WHERE1') || 'FROM_START';
+  const where2 = block.getFieldValue('WHERE2') || 'FROM_START';
+  const at1 = cppGenerator.valueToCode(block, 'AT1', cppGenerator.ORDER_NONE) || '1';
+  const at2 = cppGenerator.valueToCode(block, 'AT2', cppGenerator.ORDER_NONE) || '1';
+  const start = where1 === 'FIRST' ? '0' : where1 === 'FROM_END' ? `(long long)__t.size() - (${at1})` : `(${at1}) - 1`;
+  const end = where2 === 'LAST' ? '(long long)__t.size() - 1' : where2 === 'FROM_END' ? `(long long)__t.size() - (${at2})` : `(${at2}) - 1`;
+  return [
+    `([&](){ string __t = ${asStringExpr(textExpr)}; if (__t.empty()) return string(""); long long __s = ${start}; long long __e = ${end}; if (__s < 0) __s = 0; if (__e >= (long long)__t.size()) __e = (long long)__t.size() - 1; if (__s > __e) return string(""); return __t.substr((size_t)__s, (size_t)(__e - __s + 1)); })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['text_changeCase'] = function (block) {
+  const textExpr = cppGenerator.valueToCode(block, 'TEXT', cppGenerator.ORDER_NONE) || '""';
+  const mode = block.getFieldValue('CASE') || 'UPPERCASE';
+  if (mode === 'LOWERCASE') {
+    return [
+      `([&](){ string __s = ${asStringExpr(textExpr)}; for (char &c : __s) c = (char)tolower((unsigned char)c); return __s; })()`,
+      cppGenerator.ORDER_ATOMIC,
+    ];
+  }
+  if (mode === 'TITLECASE') {
+    return [
+      `([&](){ string __s = ${asStringExpr(textExpr)}; bool __nw = true; for (char &c : __s) { if (isspace((unsigned char)c)) { __nw = true; } else { c = (char)(__nw ? toupper((unsigned char)c) : tolower((unsigned char)c)); __nw = false; } } return __s; })()`,
+      cppGenerator.ORDER_ATOMIC,
+    ];
+  }
+  return [
+    `([&](){ string __s = ${asStringExpr(textExpr)}; for (char &c : __s) c = (char)toupper((unsigned char)c); return __s; })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['text_trim'] = function (block) {
+  const textExpr = cppGenerator.valueToCode(block, 'TEXT', cppGenerator.ORDER_NONE) || '""';
+  const mode = block.getFieldValue('MODE') || 'BOTH';
+  return [
+    `([&](){ string __s = ${asStringExpr(textExpr)}; size_t __l = 0, __r = __s.size(); if ('${mode}' != 'RIGHT') while (__l < __r && isspace((unsigned char)__s[__l])) ++__l; if ('${mode}' != 'LEFT') while (__r > __l && isspace((unsigned char)__s[__r - 1])) --__r; return __s.substr(__l, __r - __l); })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['lists_create_empty'] = function (_block) {
+  return ['vector<long long>{}', cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['lists_create_with'] = function (block) {
+  const itemCount = block.itemCount_ || 0;
+  const items = [];
+  for (let i = 0; i < itemCount; i++) {
+    items.push(cppGenerator.valueToCode(block, `ADD${i}`, cppGenerator.ORDER_NONE) || '0');
+  }
+  return [`vector<long long>{${items.join(', ')}}`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['lists_repeat'] = function (block) {
+  const item = cppGenerator.valueToCode(block, 'ITEM', cppGenerator.ORDER_NONE) || '0';
+  const num = cppGenerator.valueToCode(block, 'NUM', cppGenerator.ORDER_NONE) || '0';
+  return [`vector<long long>((long long)(${num}), ${item})`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['lists_length'] = function (block) {
+  const listExpr = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || 'vector<long long>{}';
+  return [`((long long)(${listExpr}).size())`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['lists_isEmpty'] = function (block) {
+  const listExpr = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || 'vector<long long>{}';
+  return [`(${listExpr}).empty()`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['lists_indexOf'] = function (block) {
+  const listExpr = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || 'vector<long long>{}';
+  const findExpr = cppGenerator.valueToCode(block, 'FIND', cppGenerator.ORDER_NONE) || '0';
+  const end = block.getFieldValue('END') || 'FIRST';
+  if (end === 'LAST') {
+    return [
+      `([&](){ auto __l = ${listExpr}; for (long long __i = (long long)__l.size() - 1; __i >= 0; --__i) { if (__l[(size_t)__i] == (${findExpr})) return __i + 1; } return 0LL; })()`,
+      cppGenerator.ORDER_ATOMIC,
+    ];
+  }
+  return [
+    `([&](){ auto __l = ${listExpr}; for (size_t __i = 0; __i < __l.size(); ++__i) { if (__l[__i] == (${findExpr})) return (long long)__i + 1; } return 0LL; })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['lists_getIndex'] = function (block) {
+  const mode = block.getFieldValue('MODE') || 'GET';
+  const where = block.getFieldValue('WHERE') || 'FROM_START';
+  const listExpr = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || '';
+  const listName = asSimpleIdentifier(listExpr);
+  const at = cppGenerator.valueToCode(block, 'AT', cppGenerator.ORDER_NONE) || '1';
+  if (!listName) {
+    return mode === 'REMOVE' ? '' : ['0', cppGenerator.ORDER_ATOMIC];
+  }
+  const idxExpr = listIndexExpr(where, listName, at);
+  if (mode === 'REMOVE') {
+    return `if (!${listName}.empty()) { long long __idx = ${idxExpr}; if (__idx >= 0 && __idx < (long long)${listName}.size()) ${listName}.erase(${listName}.begin() + __idx); }`;
+  }
+  if (mode === 'GET_REMOVE') {
+    return [
+      `([&](){ if (${listName}.empty()) return 0LL; long long __idx = ${idxExpr}; if (__idx < 0 || __idx >= (long long)${listName}.size()) return 0LL; long long __v = ${listName}[(size_t)__idx]; ${listName}.erase(${listName}.begin() + __idx); return __v; })()`,
+      cppGenerator.ORDER_ATOMIC,
+    ];
+  }
+  return [
+    `([&](){ if (${listName}.empty()) return 0LL; long long __idx = ${idxExpr}; if (__idx < 0 || __idx >= (long long)${listName}.size()) return 0LL; return ${listName}[(size_t)__idx]; })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['lists_setIndex'] = function (block) {
+  const mode = block.getFieldValue('MODE') || 'SET';
+  const where = block.getFieldValue('WHERE') || 'FROM_START';
+  const listExpr = cppGenerator.valueToCode(block, 'LIST', cppGenerator.ORDER_NONE) || '';
+  const listName = asSimpleIdentifier(listExpr);
+  const at = cppGenerator.valueToCode(block, 'AT', cppGenerator.ORDER_NONE) || '1';
+  const toExpr = cppGenerator.valueToCode(block, 'TO', cppGenerator.ORDER_NONE) || '0';
+  if (!listName) return '';
+  const idxExpr = listIndexExpr(where, listName, at);
+  if (mode === 'INSERT') {
+    return `if (${listName}.empty()) { ${listName}.push_back(${toExpr}); } else { long long __idx = ${idxExpr}; if (__idx < 0) __idx = 0; if (__idx > (long long)${listName}.size()) __idx = (long long)${listName}.size(); ${listName}.insert(${listName}.begin() + __idx, ${toExpr}); }`;
+  }
+  return `if (!${listName}.empty()) { long long __idx = ${idxExpr}; if (__idx >= 0 && __idx < (long long)${listName}.size()) ${listName}[(size_t)__idx] = ${toExpr}; }`;
+};
+
+cppGenerator.forBlock['lists_getSublist'] = function (block) {
+  const listExpr = cppGenerator.valueToCode(block, 'LIST', cppGenerator.ORDER_NONE) || 'vector<long long>{}';
+  const where1 = block.getFieldValue('WHERE1') || 'FROM_START';
+  const where2 = block.getFieldValue('WHERE2') || 'FROM_START';
+  const at1 = cppGenerator.valueToCode(block, 'AT1', cppGenerator.ORDER_NONE) || '1';
+  const at2 = cppGenerator.valueToCode(block, 'AT2', cppGenerator.ORDER_NONE) || '1';
+  const start = where1 === 'FIRST' ? '0' : where1 === 'FROM_END' ? `(long long)__src.size() - (${at1})` : `(${at1}) - 1`;
+  const end = where2 === 'LAST' ? '(long long)__src.size() - 1' : where2 === 'FROM_END' ? `(long long)__src.size() - (${at2})` : `(${at2}) - 1`;
+  return [
+    `([&](){ auto __src = ${listExpr}; vector<long long> __out; if (__src.empty()) return __out; long long __s = ${start}; long long __e = ${end}; if (__s < 0) __s = 0; if (__e >= (long long)__src.size()) __e = (long long)__src.size() - 1; if (__s > __e) return __out; __out.insert(__out.end(), __src.begin() + __s, __src.begin() + __e + 1); return __out; })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['lists_split'] = function (block) {
+  const mode = block.getFieldValue('MODE') || 'SPLIT';
+  const input = cppGenerator.valueToCode(block, 'INPUT', cppGenerator.ORDER_NONE) || '""';
+  const delim = cppGenerator.valueToCode(block, 'DELIM', cppGenerator.ORDER_NONE) || '","';
+  if (mode === 'JOIN') {
+    return [
+      `([&](){ auto __v = ${input}; string __d = ${asStringExpr(delim)}; std::ostringstream __oss; for (size_t __i = 0; __i < __v.size(); ++__i) { if (__i) __oss << __d; __oss << __v[__i]; } return __oss.str(); })()`,
+      cppGenerator.ORDER_ATOMIC,
+    ];
+  }
+  return [
+    `([&](){ string __s = ${asStringExpr(input)}; string __d = ${asStringExpr(delim)}; vector<long long> __out; if (__d.empty()) { for (char __c : __s) __out.push_back((long long)__c); return __out; } size_t __pos = 0; while (true) { size_t __p = __s.find(__d, __pos); string __tok = (__p == string::npos) ? __s.substr(__pos) : __s.substr(__pos, __p - __pos); try { __out.push_back(stoll(__tok)); } catch (...) { __out.push_back(0); } if (__p == string::npos) break; __pos = __p + __d.size(); } return __out; })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['lists_sort'] = function (block) {
+  const dir = block.getFieldValue('DIRECTION') || '1';
+  const listExpr = cppGenerator.valueToCode(block, 'LIST', cppGenerator.ORDER_NONE) || 'vector<long long>{}';
+  const reverseCode = dir === '-1' ? 'reverse(__v.begin(), __v.end()); ' : '';
+  return [
+    `([&](){ auto __v = ${listExpr}; sort(__v.begin(), __v.end()); ${reverseCode}return __v; })()`,
+    cppGenerator.ORDER_ATOMIC,
+  ];
+};
+
+cppGenerator.forBlock['procedures_defnoreturn'] = function (block) {
+  const def = block.getProcedureDef ? block.getProcedureDef() : null;
+  const rawName = def?.[0] || block.getFieldValue('NAME') || 'doSomething';
+  const args = def?.[1] || [];
+  const funcName = cppGenerator.nameDB_.getName(rawName, Blockly.PROCEDURE_CATEGORY_NAME);
+  const argDecl = args
+    .map((arg) => `long long ${cppGenerator.nameDB_.getName(arg, Blockly.VARIABLE_CATEGORY_NAME)}`)
+    .join(', ');
+  const body = cppGenerator.statementToCode(block, 'STACK');
+  cppGenerator._procedureDefs.set(funcName, `void ${funcName}(${argDecl}) {\n${body}}`);
+  return '';
+};
+
+cppGenerator.forBlock['procedures_defreturn'] = function (block) {
+  const def = block.getProcedureDef ? block.getProcedureDef() : null;
+  const rawName = def?.[0] || block.getFieldValue('NAME') || 'doSomething';
+  const args = def?.[1] || [];
+  const funcName = cppGenerator.nameDB_.getName(rawName, Blockly.PROCEDURE_CATEGORY_NAME);
+  const argDecl = args
+    .map((arg) => `long long ${cppGenerator.nameDB_.getName(arg, Blockly.VARIABLE_CATEGORY_NAME)}`)
+    .join(', ');
+  const body = cppGenerator.statementToCode(block, 'STACK');
+  const ret = cppGenerator.valueToCode(block, 'RETURN', cppGenerator.ORDER_NONE) || '0';
+  cppGenerator._procedureDefs.set(funcName, `long long ${funcName}(${argDecl}) {\n${body}  return ${ret};\n}`);
+  return '';
+};
+
+cppGenerator.forBlock['procedures_callnoreturn'] = function (block) {
+  const rawName = block.getProcedureCall ? block.getProcedureCall() : block.getFieldValue('NAME');
+  const funcName = cppGenerator.nameDB_.getName(rawName || 'doSomething', Blockly.PROCEDURE_CATEGORY_NAME);
+  const args = (block.arguments_ || []).map((_, i) =>
+    cppGenerator.valueToCode(block, `ARG${i}`, cppGenerator.ORDER_NONE) || '0'
+  );
+  return `${funcName}(${args.join(', ')});`;
+};
+
+cppGenerator.forBlock['procedures_callreturn'] = function (block) {
+  const rawName = block.getProcedureCall ? block.getProcedureCall() : block.getFieldValue('NAME');
+  const funcName = cppGenerator.nameDB_.getName(rawName || 'doSomething', Blockly.PROCEDURE_CATEGORY_NAME);
+  const args = (block.arguments_ || []).map((_, i) =>
+    cppGenerator.valueToCode(block, `ARG${i}`, cppGenerator.ORDER_NONE) || '0'
+  );
+  return [`${funcName}(${args.join(', ')})`, cppGenerator.ORDER_ATOMIC];
+};
+
+cppGenerator.forBlock['procedures_ifreturn'] = function (block) {
+  const condition = cppGenerator.valueToCode(block, 'CONDITION', cppGenerator.ORDER_NONE) || 'false';
+  if (block.hasReturnValue_) {
+    const value = cppGenerator.valueToCode(block, 'VALUE', cppGenerator.ORDER_NONE) || '0';
+    return `if (${condition}) {\n  return ${value};\n}`;
+  }
+  return `if (${condition}) {\n  return;\n}`;
+};
+
+const rawBlockToCode = cppGenerator.blockToCode.bind(cppGenerator);
+cppGenerator.blockToCode = function (block, opt_thisOnly) {
+  if (!block) return '';
+  const generator = cppGenerator.forBlock[block.type];
+  if (!generator) {
+    if (block.outputConnection) return ['0', cppGenerator.ORDER_ATOMIC];
+    const next = block.nextConnection && block.nextConnection.targetBlock();
+    return next ? cppGenerator.blockToCode(next, opt_thisOnly) : '';
+  }
+  return rawBlockToCode(block, opt_thisOnly);
+};
+
+
 const toolbox = {
   kind: 'categoryToolbox',
   contents: [
-    {
-      kind: 'category',
-      name: '常用',
-      colour: 290,
-      contents: [{ kind: 'block', type: 'program_main' }, { kind: 'block', type: 'program_end' }],
-    },
-    {
-      kind: 'category',
-      name: '变量集',
-      colour: 60,
-      contents: [
-        {
-          kind: 'category',
-          name: '变量',
-          colour: 330,
-          contents: [
-            { kind: 'block', type: 'var_define' },
-            { kind: 'block', type: 'var_assign' },
-            { kind: 'block', type: 'var_get' },
-          ],
-        },
-        {
-          kind: 'category',
-          name: '数组',
-          colour: 285,
-          contents: [
-            {
-              kind: 'block',
-              type: 'array_define_1d',
-              inputs: {
-                LEN1: {
-                  shadow: {
-                    type: 'math_number',
-                    fields: { NUM: 1 },
-                  },
-                },
-              },
-            },
-            {
-              kind: 'block',
-              type: 'array_define_2d',
-              inputs: {
-                LEN1: {
-                  shadow: {
-                    type: 'math_number',
-                    fields: { NUM: 1 },
-                  },
-                },
-                LEN2: {
-                  shadow: {
-                    type: 'math_number',
-                    fields: { NUM: 1 },
-                  },
-                },
-              },
-            },
-            {
-              kind: 'block',
-              type: 'array_set',
-              inputs: {
-                I1: {
-                  shadow: {
-                    type: 'math_number',
-                    fields: { NUM: 0 },
-                  },
-                },
-              },
-            },
-            {
-              kind: 'block',
-              type: 'array_get',
-              inputs: {
-                I1: {
-                  shadow: {
-                    type: 'math_number',
-                    fields: { NUM: 0 },
-                  },
-                },
-              },
-            },
-          ],
-        },
-      ],
-    },
     {
       kind: 'category',
       name: '逻辑',
@@ -699,6 +1039,9 @@ const toolbox = {
         { kind: 'block', type: 'logic_compare' },
         { kind: 'block', type: 'logic_operation' },
         { kind: 'block', type: 'logic_negate' },
+        { kind: 'block', type: 'logic_boolean' },
+        { kind: 'block', type: 'logic_null' },
+        { kind: 'block', type: 'logic_ternary' },
       ],
     },
     {
@@ -708,7 +1051,20 @@ const toolbox = {
       contents: [
         {
           kind: 'block',
-          type: 'controls_for_custom',
+          type: 'controls_repeat_ext',
+          inputs: {
+            TIMES: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 10 },
+              },
+            },
+          },
+        },
+        { kind: 'block', type: 'controls_whileUntil' },
+        {
+          kind: 'block',
+          type: 'controls_for',
           inputs: {
             FROM: {
               shadow: {
@@ -719,7 +1075,7 @@ const toolbox = {
             TO: {
               shadow: {
                 type: 'math_number',
-                fields: { NUM: 1 },
+                fields: { NUM: 10 },
               },
             },
             BY: {
@@ -730,35 +1086,217 @@ const toolbox = {
             },
           },
         },
-        { kind: 'block', type: 'controls_whileUntil' },
+        { kind: 'block', type: 'controls_forEach' },
+        { kind: 'block', type: 'controls_flow_statements' },
       ],
     },
     {
       kind: 'category',
-      name: '算术',
+      name: '数学',
       categorystyle: 'math_category',
       contents: [
         { kind: 'block', type: 'math_number' },
         { kind: 'block', type: 'math_arithmetic' },
+        { kind: 'block', type: 'math_single' },
+        { kind: 'block', type: 'math_round' },
+        { kind: 'block', type: 'math_modulo' },
+        {
+          kind: 'block',
+          type: 'math_random_int',
+          inputs: {
+            FROM: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 1 },
+              },
+            },
+            TO: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 100 },
+              },
+            },
+          },
+        },
+        { kind: 'block', type: 'math_random_float' },
+        {
+          kind: 'block',
+          type: 'math_atan2',
+          inputs: {
+            X: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 1 },
+              },
+            },
+            Y: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 1 },
+              },
+            },
+          },
+        },
       ],
     },
     {
       kind: 'category',
       name: '文本',
       categorystyle: 'text_category',
-      contents: [{ kind: 'block', type: 'text' }],
+      contents: [
+        { kind: 'block', type: 'text' },
+        { kind: 'block', type: 'text_join' },
+        { kind: 'block', type: 'text_length' },
+        { kind: 'block', type: 'text_isEmpty' },
+        { kind: 'block', type: 'text_indexOf' },
+        { kind: 'block', type: 'text_charAt' },
+        { kind: 'block', type: 'text_getSubstring' },
+        { kind: 'block', type: 'text_changeCase' },
+        { kind: 'block', type: 'text_trim' },
+      ],
     },
     {
       kind: 'category',
-      name: '输入/输出',
-      colour: 210,
+      name: '列表',
+      categorystyle: 'list_category',
       contents: [
-        { kind: 'block', type: 'io_read' },
-        { kind: 'block', type: 'io_println' },
+        { kind: 'block', type: 'lists_create_empty' },
+        { kind: 'block', type: 'lists_create_with' },
+        {
+          kind: 'block',
+          type: 'lists_repeat',
+          inputs: {
+            ITEM: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 0 },
+              },
+            },
+            NUM: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 5 },
+              },
+            },
+          },
+        },
+        { kind: 'block', type: 'lists_length' },
+        { kind: 'block', type: 'lists_isEmpty' },
+        { kind: 'block', type: 'lists_indexOf' },
+        {
+          kind: 'block',
+          type: 'lists_getIndex',
+          inputs: {
+            AT: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 1 },
+              },
+            },
+          },
+        },
+        {
+          kind: 'block',
+          type: 'lists_setIndex',
+          inputs: {
+            AT: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 1 },
+              },
+            },
+            TO: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 0 },
+              },
+            },
+          },
+        },
+        {
+          kind: 'block',
+          type: 'lists_getSublist',
+          inputs: {
+            AT1: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 1 },
+              },
+            },
+            AT2: {
+              shadow: {
+                type: 'math_number',
+                fields: { NUM: 1 },
+              },
+            },
+          },
+        },
+        {
+          kind: 'block',
+          type: 'lists_split',
+          inputs: {
+            DELIM: {
+              shadow: {
+                type: 'text',
+                fields: { TEXT: ',' },
+              },
+            },
+          },
+        },
+        { kind: 'block', type: 'lists_sort' },
       ],
+    },
+    {
+      kind: 'category',
+      name: '输入输出',
+      colour: 25,
+      contents: [
+        { kind: 'block', type: 'io_read_int' },
+        { kind: 'block', type: 'io_read_float' },
+        { kind: 'block', type: 'io_read_string' },
+        { kind: 'block', type: 'io_read_line' },
+        {
+          kind: 'block',
+          type: 'io_print',
+          inputs: {
+            VALUE: {
+              shadow: {
+                type: 'text',
+                fields: { TEXT: 'abc' },
+              },
+            },
+          },
+        },
+        {
+          kind: 'block',
+          type: 'io_println',
+          inputs: {
+            VALUE: {
+              shadow: {
+                type: 'text',
+                fields: { TEXT: '' },
+              },
+            },
+          },
+        },
+      ],
+    },
+    { kind: 'sep' },
+    {
+      kind: 'category',
+      name: '变量',
+      colour: 330,
+      custom: 'VARIABLE',
+    },
+    {
+      kind: 'category',
+      name: '函数',
+      colour: 290,
+      custom: 'PROCEDURE',
     },
   ],
 };
+
 
 const generate = () => {
   if (!workspace) return;
@@ -911,22 +1449,29 @@ const setupBlocklyDialogs = () => {
 
 const ensureMainBlock = () => {
   if (!workspace) return;
-  const blocks = workspace.getAllBlocks(false) || [];
-  if (blocks.length > 0) return;
 
-  const main = workspace.newBlock('program_main');
-  main.initSvg();
-  main.render();
-  main.moveBy(380, 80);
+  let main = workspace.getBlocksByType('program_main', false)?.[0] || null;
+  if (!main) {
+    main = workspace.newBlock('program_main');
+    main.initSvg();
+    main.render();
+    main.moveBy(80, 80);
 
-  const end = workspace.newBlock('program_end');
-  end.initSvg();
-  end.render();
-
-  const bodyConn = main.getInput('DO')?.connection;
-  if (bodyConn && end.previousConnection) {
-    bodyConn.connect(end.previousConnection);
+    const doConn = main.getInput('DO')?.connection;
+    if (doConn) {
+      const tops = workspace
+        .getTopBlocks(true)
+        .filter((b) => b.id !== main.id && b.previousConnection && !b.outputConnection && !b.isShadow());
+      const first = tops[0];
+      if (first?.previousConnection) {
+        try {
+          doConn.connect(first.previousConnection);
+        } catch (_) {}
+      }
+    }
   }
+
+  main.setDeletable(false);
 };
 
 onMounted(() => {

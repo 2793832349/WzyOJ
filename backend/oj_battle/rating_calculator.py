@@ -28,6 +28,7 @@ class RatingCalculator:
         7: 2400,  # 40分钟
         8: 2700,  # 45分钟
         9: 3000,  # 50分钟
+        10: 3300,  # 55分钟
     }
     
     @staticmethod
@@ -36,7 +37,7 @@ class RatingCalculator:
         if difficulty is None:
             difficulty = 1  # 默认普及难度
         # 确保难度在有效范围内
-        difficulty = max(0, min(9, difficulty))
+        difficulty = max(0, min(10, difficulty))
         return RatingCalculator.BONUS_TIME_BY_DIFFICULTY.get(difficulty, 600)
     
     @staticmethod
