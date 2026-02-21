@@ -183,16 +183,18 @@ watch(id, loadData, { immediate: true });
 </script>
 
 <template>
+  <div class="objective-edit-page">
   <n-spin :show="loading">
     <n-space vertical size="large">
       <n-page-header @back="router.push({ name: 'objective_list' })">
         <template #title>{{ isEdit ? `编辑客观题 #${id}` : '创建客观题' }}</template>
+        <template #subtitle>支持 Markdown 题干/选项/解析，自动适配手机录入。</template>
       </n-page-header>
 
-      <n-card :bordered="false">
-        <n-form label-placement="left" label-width="110" size="large">
+      <n-card :bordered="false" class="objective-main-card">
+        <n-form class="objective-question-form" label-placement="left" label-width="110" size="large">
           <n-form-item label="题型">
-            <n-select v-model:value="question.question_type" :options="typeOptions" style="width: 220px" />
+            <n-select v-model:value="question.question_type" :options="typeOptions" class="type-select" />
           </n-form-item>
 
           <n-form-item label="难度">
@@ -220,15 +222,15 @@ watch(id, loadData, { immediate: true });
                 <n-space
                   v-for="(opt, idx) in question.options"
                   :key="`${idx}-${opt.key}`"
+                  class="option-row"
                   align="start"
-                  style="width: 100%"
                 >
-                  <n-input v-model:value="opt.key" style="width: 90px" placeholder="Key" />
+                  <n-input v-model:value="opt.key" class="option-key-input" placeholder="Key" />
                   <n-input
                       v-model:value="opt.text"
                       type="textarea"
                       :autosize="{ minRows: 2, maxRows: 8 }"
-                      style="flex: 1"
+                      class="option-text-input"
                       placeholder="选项内容（支持 Markdown，如 ```cpp ... ```）"
                     />
                   <n-button tertiary type="error" @click="removeOption(idx)">删除</n-button>
@@ -275,7 +277,7 @@ watch(id, loadData, { immediate: true });
           </n-form-item>
 
           <n-form-item>
-            <n-space>
+            <n-space class="objective-edit-actions">
               <n-button type="primary" :loading="saving" @click="save">保存</n-button>
               <n-button @click="router.push({ name: 'objective_list' })">取消</n-button>
             </n-space>
@@ -284,4 +286,112 @@ watch(id, loadData, { immediate: true });
       </n-card>
     </n-space>
   </n-spin>
+  </div>
 </template>
+
+
+<style scoped>
+.objective-edit-page {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 6px 2px 22px;
+}
+
+.objective-edit-page :deep(.n-page-header) {
+  padding: 14px 16px;
+  border: 1px solid #e5edf8;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f6fbff 0%, #ffffff 100%);
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.07);
+}
+
+.objective-main-card {
+  border: 1px solid #e5edf8;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.06);
+}
+
+.objective-question-form :deep(.n-form-item-label) {
+  color: #34506d;
+  font-weight: 600;
+}
+
+.type-select {
+  width: 220px;
+}
+
+.option-row {
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #e8eef7;
+  background: #f9fbff;
+}
+
+.option-row :deep(.n-input-wrapper) {
+  border-radius: 10px;
+}
+
+.option-key-input {
+  width: 90px;
+  flex: 0 0 auto;
+}
+
+.option-text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.objective-edit-actions {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.objective-edit-actions :deep(.n-button) {
+  min-width: 120px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .objective-edit-page {
+    padding: 0 0 14px;
+  }
+
+  .objective-edit-page :deep(.n-page-header) {
+    border-radius: 14px;
+    padding: 12px;
+  }
+
+  .type-select {
+    width: 100%;
+  }
+
+  .objective-question-form {
+    width: 100%;
+  }
+
+  .option-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .option-key-input,
+  .option-text-input {
+    width: 100%;
+  }
+
+  .objective-edit-actions :deep(.n-button) {
+    width: 100%;
+  }
+
+  .objective-edit-page :deep(.n-radio-group .n-space),
+  .objective-edit-page :deep(.n-checkbox-group .n-space) {
+    flex-wrap: wrap;
+  }
+}
+</style>

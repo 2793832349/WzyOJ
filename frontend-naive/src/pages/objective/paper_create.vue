@@ -546,6 +546,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <div class="objective-paper-config-page">
   <n-spin :show="loading">
     <n-space vertical size="large">
       <n-page-header @back="router.push({ name: 'objective_paper_list' })">
@@ -553,8 +554,8 @@ onBeforeUnmount(() => {
         <template #subtitle>可手动录入，也可上传 PDF / 粘贴图片 用 AI 自动识别整套试卷</template>
       </n-page-header>
 
-      <n-card :bordered="false">
-        <n-form label-placement="left" label-width="110" size="large">
+      <n-card :bordered="false" class="paper-meta-card">
+        <n-form class="objective-paper-form" label-placement="left" label-width="110" size="large">
           <n-form-item label="套卷标题">
             <n-input v-model:value="form.title" placeholder="例如：C++ 一级模拟卷 A" />
           </n-form-item>
@@ -586,7 +587,7 @@ onBeforeUnmount(() => {
 
           <n-form-item label="AI导入图片">
             <n-space vertical style="width: 100%">
-              <n-space>
+              <n-space class="paper-image-actions">
                 <input
                   ref="imageInputRef"
                   type="file"
@@ -606,15 +607,15 @@ onBeforeUnmount(() => {
                 支持直接在本页按 <b>Ctrl/Cmd + V</b> 粘贴截图导入。也可在每道题里使用“识别填充本题”。
               </n-alert>
 
-              <div v-if="pastedImagePreview && pastedImageScope === 'paper'" style="max-width: 360px; border: 1px solid #e5e7eb; border-radius: 8px; padding: 8px;">
-                <img :src="pastedImagePreview" alt="pasted-preview" style="width: 100%; display: block; border-radius: 6px;" />
+              <div v-if="pastedImagePreview && pastedImageScope === 'paper'" class="pasted-preview-card">
+                <img :src="pastedImagePreview" alt="pasted-preview" class="pasted-preview-image" />
               </div>
             </n-space>
           </n-form-item>
         </n-form>
       </n-card>
 
-      <n-card :bordered="false" title="题目列表">
+      <n-card :bordered="false" title="题目列表" class="question-list-card">
         <n-space vertical :size="16">
           <n-card
             v-for="(q, idx) in form.questions"
@@ -622,10 +623,11 @@ onBeforeUnmount(() => {
             size="small"
             embedded
             :title="`第 ${idx + 1} 题`"
+            class="question-editor-card"
             @click="setActiveQuestion(idx)"
             @focusin="setActiveQuestion(idx)"
           >
-            <n-form label-placement="left" label-width="90">
+            <n-form class="question-editor-form" label-placement="left" label-width="90">
               <n-form-item label="题型">
                 <n-select
                   v-model:value="q.question_type"
@@ -665,15 +667,15 @@ onBeforeUnmount(() => {
                     <n-space
                       v-for="(opt, optIdx) in q.options"
                       :key="`${optIdx}-${opt.key}`"
+                      class="paper-option-row"
                       align="start"
-                      style="width: 100%"
                     >
-                      <n-input v-model:value="opt.key" style="width: 90px" placeholder="Key" />
+                      <n-input v-model:value="opt.key" class="option-key-input" placeholder="Key" />
                       <n-input
                       v-model:value="opt.text"
                       type="textarea"
                       :autosize="{ minRows: 2, maxRows: 8 }"
-                      style="flex: 1"
+                      class="option-text-input"
                       placeholder="选项内容（支持 Markdown，如 ```cpp ... ```）"
                     />
                       <n-button tertiary type="error" @click="removeOption(idx, optIdx)">删除</n-button>
@@ -726,15 +728,163 @@ onBeforeUnmount(() => {
           </n-card>
         </n-space>
 
-        <n-space style="margin-top: 12px">
+        <n-space class="paper-actions">
           <n-button dashed @click="addQuestion">添加一道题</n-button>
         </n-space>
       </n-card>
 
-      <n-space>
+      <n-space class="paper-submit-actions">
         <n-button type="primary" :loading="saving" @click="save">{{ isEdit ? '保存修改' : '保存整套试卷' }}</n-button>
         <n-button @click="router.push({ name: 'objective_paper_list' })">取消</n-button>
       </n-space>
     </n-space>
   </n-spin>
+  </div>
 </template>
+
+
+<style scoped>
+.objective-paper-config-page {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 6px 2px 22px;
+}
+
+.objective-paper-config-page :deep(.n-page-header) {
+  row-gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid #e5edf8;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f6fbff 0%, #ffffff 100%);
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.07);
+}
+
+.paper-meta-card,
+.question-list-card {
+  border: 1px solid #e5edf8;
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.06);
+}
+
+.objective-paper-form :deep(.n-form-item-label),
+.question-editor-form :deep(.n-form-item-label) {
+  color: #35516f;
+  font-weight: 600;
+}
+
+.paper-image-actions :deep(.n-button),
+.paper-actions :deep(.n-button),
+.paper-submit-actions :deep(.n-button) {
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.pasted-preview-card {
+  max-width: 420px;
+  border: 1px solid #dde8f8;
+  border-radius: 12px;
+  padding: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.08);
+}
+
+.pasted-preview-image {
+  width: 100%;
+  display: block;
+  border-radius: 8px;
+}
+
+.question-editor-card {
+  border: 1px solid #e6edf8;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.question-editor-card:hover,
+.question-editor-card:focus-within {
+  border-color: #d5e3f5;
+  box-shadow: 0 12px 28px rgba(32, 80, 160, 0.08);
+}
+
+.paper-option-row {
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #e8eef8;
+  background: #f9fbff;
+}
+
+.option-key-input {
+  width: 90px;
+  flex: 0 0 auto;
+}
+
+.option-text-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.paper-submit-actions {
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.paper-submit-actions :deep(.n-button) {
+  min-width: 128px;
+}
+
+@media (max-width: 900px) {
+  .objective-paper-config-page {
+    padding: 0 0 14px;
+  }
+
+  .objective-paper-config-page :deep(.n-page-header) {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .objective-paper-config-page :deep(.n-page-header-main) {
+    min-width: 0;
+  }
+
+  .paper-image-actions,
+  .paper-actions,
+  .paper-submit-actions {
+    width: 100%;
+  }
+
+  .paper-image-actions :deep(.n-button),
+  .paper-actions :deep(.n-button),
+  .paper-submit-actions :deep(.n-button) {
+    width: 100%;
+  }
+
+  .pasted-preview-card {
+    max-width: 100%;
+  }
+
+  .paper-option-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .option-key-input,
+  .option-text-input {
+    width: 100%;
+  }
+
+  .question-editor-form :deep(.n-select),
+  .question-editor-form :deep(.n-input-number) {
+    width: 100% !important;
+  }
+
+  .objective-paper-config-page :deep(.n-radio-group .n-space),
+  .objective-paper-config-page :deep(.n-checkbox-group .n-space) {
+    flex-wrap: wrap;
+  }
+}
+</style>

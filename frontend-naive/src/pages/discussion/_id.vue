@@ -124,11 +124,12 @@ const goto = reply_id => {
 </script>
 
 <template>
-  <n-space align="center" justify="space-between">
-    <h1 style="margin: 0">{{ discussion.title }}</h1>
+  <div class="discussion-detail-page">
+  <n-space class="discussion-header-bar" align="center" justify="space-between">
+    <h1 class="discussion-title">{{ discussion.title }}</h1>
     <n-button v-if="canEditDiscussion" @click="gotoEditDiscussion">编辑讨论</n-button>
   </n-space>
-  <n-collapse>
+  <n-collapse class="relation-collapse">
     <n-collapse-item
       title="关联问题"
       name="related_problem"
@@ -199,10 +200,7 @@ const goto = reply_id => {
       </n-button-group>
     </template>
   </n-card>
-  <div
-    style="display: flex; justify-content: center; margin: 2rem 0"
-    v-if="replies.length"
-  >
+  <div class="load-more-wrap" v-if="replies.length">
     <n-button
       size="large"
       :loading="loading"
@@ -215,10 +213,10 @@ const goto = reply_id => {
 
   <n-divider />
 
-  <div v-if="canPublishDiscussion">
-    <h2>新回复</h2>
-    <p>第一行“Reply to #X”格式的内容会在发布时自动转义和消去。</p>
-    <p>暂不支持@用户。</p>
+  <div v-if="canPublishDiscussion" class="new-reply-panel">
+    <h2 class="new-reply-title">新回复</h2>
+    <p class="new-reply-hint">第一行“Reply to #X”格式的内容会在发布时自动转义和消去。</p>
+    <p class="new-reply-hint">暂不支持@用户。</p>
     <MdEditor v-model:content="newReply.content" />
     <Captcha
       scene="discussion"
@@ -230,31 +228,146 @@ const goto = reply_id => {
       type="primary"
       size="large"
       @click="submitReply"
-      style="margin: 1.5rem 0"
+      class="publish-btn"
     >
       发布
     </n-button>
   </div>
   <n-alert v-else type="info" :show-icon="false">仅教师可发布回复</n-alert>
+  </div>
 </template>
 
 <style lang="scss" scoped>
+.discussion-detail-page {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 6px 2px 24px;
+}
+
+.discussion-header-bar {
+  margin-bottom: 12px;
+  padding: 16px 18px;
+  border: 1px solid #e4ecf7;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f6fbff 0%, #ffffff 100%);
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.07);
+}
+
+.discussion-title {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  color: #1f2d3d;
+}
+
+.relation-collapse {
+  border: 1px solid #e6edf8;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.load-more-wrap {
+  display: flex;
+  justify-content: center;
+  margin: 2rem 0;
+}
+
+.publish-btn {
+  margin: 1rem 0 0;
+}
+
+.new-reply-panel {
+  margin-top: 8px;
+  padding: 16px;
+  border: 1px solid #e4ecf7;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #f8fcff 0%, #ffffff 100%);
+}
+
+.new-reply-title {
+  margin: 0 0 8px;
+}
+
+.new-reply-hint {
+  margin: 0 0 6px;
+  color: #60748a;
+}
+
 .reply {
-  margin-bottom: 1rem;
+  margin-bottom: 12px;
+  border: 1px solid #e6edf8;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.05);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+  &:hover {
+    border-color: #d6e4f5;
+    box-shadow: 0 14px 30px rgba(32, 80, 160, 0.08);
+  }
+
   .reply-header {
     text-decoration: none;
     color: inherit;
+    font-weight: 600;
+
+    &:hover {
+      color: #215dc6;
+    }
+
     .n-space {
       display: inline-flex !important;
     }
   }
+
   :deep(.n-card__action) {
     padding-top: 10px;
     padding-bottom: 10px;
   }
+
   :deep(.n-card-header) {
-    padding-top: 10px;
-    padding-bottom: 10px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+}
+
+@media (max-width: 900px) {
+  .discussion-detail-page {
+    padding: 0 0 16px;
+  }
+
+  .discussion-title {
+    font-size: 28px;
+  }
+
+  .discussion-header-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .new-reply-panel {
+    padding: 12px;
+  }
+
+  .publish-btn {
+    width: 100%;
+  }
+
+  .load-more-wrap {
+    margin: 1.25rem 0;
+  }
+
+  .reply :deep(.n-card-header) {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .reply :deep(.n-card-header__main) {
+    width: 100%;
   }
 }
 </style>

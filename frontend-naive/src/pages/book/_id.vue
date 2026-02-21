@@ -241,7 +241,7 @@ onMounted(() => {
           <div class="book-info">
             <h1 class="book-title">{{ book.title }}</h1>
 
-            <n-space align="center" style="margin-bottom: 12px">
+            <n-space class="book-tag-space" align="center">
               <n-tag v-if="book.difficulty" :type="difficultyMap[book.difficulty]?.type" size="small">
                 {{ difficultyMap[book.difficulty]?.label }}
               </n-tag>
@@ -255,7 +255,7 @@ onMounted(() => {
 
             <p class="book-desc">{{ book.description }}</p>
 
-            <n-space align="center" style="margin-bottom: 16px; color: #666; font-size: 14px">
+            <n-space class="book-meta-space" align="center">
               <span>{{ book.chapter_count }} 章 / {{ book.section_count }} 节</span>
               <n-divider vertical />
               <span>预计 {{ totalEstimatedTime }} 分钟</span>
@@ -276,7 +276,7 @@ onMounted(() => {
               />
             </div>
 
-            <n-space style="margin-top: 16px">
+            <n-space class="book-action-space">
               <n-button v-if="book.user_progress" type="primary" size="large" @click="continueReading">
                 继续阅读
               </n-button>
@@ -306,7 +306,7 @@ onMounted(() => {
           </div>
         </div>
 
-        <n-tabs v-model:value="activeTab" type="line" style="margin-top: 24px">
+        <n-tabs v-model:value="activeTab" type="line" class="book-tabs">
           <n-tab-pane name="overview" tab="概览">
             <div class="overview-content">
               <h3>📖 书籍简介</h3>
@@ -384,7 +384,7 @@ onMounted(() => {
           </n-tab-pane>
         </n-tabs>
 
-        <n-alert v-if="!book.is_free && !hasAccess" type="warning" style="margin-top: 16px">
+        <n-alert v-if="!book.is_free && !hasAccess" type="warning" class="access-alert">
           <template #header>此书籍需要开通</template>
           支持两种方式：输入兑换码直接兑换，或提交支付申请并在确认后自动开通。
           <n-button size="small" type="success" style="margin-left: 12px" @click="openRedeemModal">
@@ -395,43 +395,45 @@ onMounted(() => {
           </n-button>
         </n-alert>
 
-        <n-card v-if="!book.is_free && canManage" title="支付记录（自动开通）" style="margin-top: 16px">
+        <n-card v-if="!book.is_free && canManage" title="支付记录（自动开通）" class="payment-record-card">
           <template #header-extra>
             <n-button size="small" @click="loadPaymentRequests" :loading="loadingPaymentRequests">刷新</n-button>
           </template>
           <n-spin :show="loadingPaymentRequests || checkingAccess">
-            <n-table :bordered="false" :single-line="false" v-if="paymentRequests.length > 0">
-              <thead>
-                <tr>
-                  <th>申请时间</th>
-                  <th>金额</th>
-                  <th>支付备注</th>
-                  <th>状态</th>
-                  <th>处理结果</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="req in paymentRequests" :key="req.request_id">
-                  <td>{{ formatTime(req.created_at) }}</td>
-                  <td>¥ {{ formatYuan(req.amount_cents) }}</td>
-                  <td>{{ req.payment_reference || req.remark || '-' }}</td>
-                  <td>
-                    <n-tag size="small" :type="paymentStatusMeta(req.status).type">
-                      {{ paymentStatusMeta(req.status).label }}
-                    </n-tag>
-                  </td>
-                  <td>
-                    <template v-if="req.status === 'activated'">
-                      {{ formatTime(req.activated_at || req.paid_at) }} 开通
-                    </template>
-                    <template v-else-if="req.status === 'rejected'">
-                      驳回：{{ req.rejected_reason || '无' }}
-                    </template>
-                    <span v-else style="color: #999">等待教师确认</span>
-                  </td>
-                </tr>
-              </tbody>
-            </n-table>
+            <div class="payment-table-wrap" v-if="paymentRequests.length > 0">
+              <n-table :bordered="false" :single-line="false">
+                <thead>
+                  <tr>
+                    <th>申请时间</th>
+                    <th>金额</th>
+                    <th>支付备注</th>
+                    <th>状态</th>
+                    <th>处理结果</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="req in paymentRequests" :key="req.request_id">
+                    <td>{{ formatTime(req.created_at) }}</td>
+                    <td>¥ {{ formatYuan(req.amount_cents) }}</td>
+                    <td>{{ req.payment_reference || req.remark || '-' }}</td>
+                    <td>
+                      <n-tag size="small" :type="paymentStatusMeta(req.status).type">
+                        {{ paymentStatusMeta(req.status).label }}
+                      </n-tag>
+                    </td>
+                    <td>
+                      <template v-if="req.status === 'activated'">
+                        {{ formatTime(req.activated_at || req.paid_at) }} 开通
+                      </template>
+                      <template v-else-if="req.status === 'rejected'">
+                        驳回：{{ req.rejected_reason || '无' }}
+                      </template>
+                      <span style="color: #999">等待教师确认</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </n-table>
+            </div>
             <n-empty v-else description="暂无支付记录" />
           </n-spin>
         </n-card>
@@ -479,27 +481,28 @@ onMounted(() => {
 
 <style scoped>
 .book-detail-page {
-  padding: 20px;
-  max-width: 1000px;
+  padding: 18px 20px 24px;
+  max-width: 1080px;
   margin: 0 auto;
 }
 
 .book-header {
   display: flex;
   gap: 32px;
-  padding: 24px;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 26px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+  border: 1px solid #e4ecf7;
+  border-radius: 20px;
+  box-shadow: 0 12px 28px rgba(32, 80, 160, 0.08);
 }
 
 .book-cover-large {
-  width: 200px;
-  height: 260px;
+  width: 220px;
+  height: 288px;
   flex-shrink: 0;
-  border-radius: 8px;
+  border-radius: 14px;
   overflow: hidden;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #5b8df4 0%, #4f46c8 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -522,48 +525,163 @@ onMounted(() => {
 }
 
 .book-title {
-  margin: 0 0 12px 0;
-  font-size: 28px;
-  font-weight: 600;
+  margin: 0 0 14px 0;
+  font-size: 44px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: #1f2d3d;
+}
+
+.book-tag-space {
+  margin-bottom: 14px;
+}
+
+.book-tag-space :deep(.n-tag) {
+  border-radius: 999px;
 }
 
 .book-desc {
-  color: #666;
-  line-height: 1.6;
+  color: #5f7388;
+  line-height: 1.75;
+  margin-bottom: 14px;
+}
+
+.book-meta-space {
   margin-bottom: 16px;
+  color: #61768e;
+  font-size: 14px;
 }
 
 .progress-section {
-  background: #f5f5f5;
+  margin-top: 14px;
+  background: #f5faff;
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: 12px;
+  border: 1px solid #deebfa;
+}
+
+.book-action-space {
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.book-action-space :deep(.n-button) {
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.book-tabs {
+  margin-top: 22px;
+}
+
+.book-tabs :deep(.n-tabs-nav) {
+  padding: 0 4px 6px;
+  border-bottom: 1px solid #e8eef8;
+}
+
+.book-tabs :deep(.n-tabs-tab) {
+  font-weight: 600;
+}
+
+.overview-content,
+.catalog-content {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #e6edf8;
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.05);
+  padding: 18px;
 }
 
 .overview-content h3 {
   margin: 0 0 12px 0;
-  font-size: 18px;
-  color: #333;
+  font-size: 19px;
+  color: #2b3f56;
 }
 
 .overview-content p {
-  color: #666;
-  line-height: 1.8;
-}
-
-.catalog-content {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
+  color: #61758b;
+  line-height: 1.9;
 }
 
 .section-item {
   cursor: pointer;
-  padding: 12px 16px;
-  border-radius: 4px;
-  transition: background 0.2s;
+  padding: 12px 14px;
+  border-radius: 10px;
+  transition: background 0.2s, transform 0.2s;
 }
 
 .section-item:hover {
-  background: #f5f5f5;
+  background: #f4f8ff;
+  transform: translateX(2px);
+}
+
+.payment-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.access-alert {
+  margin-top: 16px;
+  border-radius: 12px;
+}
+
+.payment-record-card {
+  margin-top: 16px;
+  border: 1px solid #e4ecf7;
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.05);
+}
+
+@media (max-width: 900px) {
+  .book-detail-page {
+    padding: 10px 12px 16px;
+  }
+
+  .book-header {
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+    border-radius: 16px;
+  }
+
+  .book-cover-large {
+    width: 100%;
+    height: auto;
+    max-width: 260px;
+    aspect-ratio: 3 / 4;
+    margin: 0 auto;
+  }
+
+  .book-title {
+    font-size: 30px;
+  }
+
+  .book-meta-space {
+    gap: 8px 12px;
+  }
+
+  .book-meta-space :deep(.n-divider.n-divider--vertical) {
+    display: none;
+  }
+
+  .book-action-space {
+    width: 100%;
+    margin-top: 12px;
+  }
+
+  .book-action-space :deep(.n-button) {
+    width: 100%;
+  }
+
+  .overview-content,
+  .catalog-content {
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .section-item {
+    padding: 10px;
+  }
 }
 </style>

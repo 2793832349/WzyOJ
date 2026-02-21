@@ -104,32 +104,31 @@ const submit = async () => {
 </script>
 
 <template>
-  <h1>
-    <n-space style="align-items: center" size="large">
-      {{ isEditMode ? '编辑讨论' : '创建讨论' }}
-    </n-space>
-  </h1>
+  <div class="discussion-edit-page">
+  <h1 class="discussion-edit-title">{{ isEditMode ? '编辑讨论' : '创建讨论' }}</h1>
+  <p class="discussion-edit-subtitle">仅教师可发布。支持关联题目/比赛并使用 Markdown 编辑正文。</p>
 
   <n-divider />
 
   <n-spin :show="loadingDetail">
+    <n-card :bordered="false" class="discussion-edit-card">
     <n-space vertical size="large">
-      <div>
-        <h2>讨论标题</h2>
+      <div class="field-block">
+        <h2 class="field-title">讨论标题</h2>
         <n-input
           v-model:value="discussion.title"
           placeholder="请输入标题"
           size="large"
         />
       </div>
-      <div>
-        <h2>关联内容</h2>
+      <div class="field-block">
+        <h2 class="field-title">关联内容</h2>
         <n-space vertical size="large">
           <n-radio-group
             v-model:value="discussion.related_content_type"
             name="radiogroup"
           >
-            <n-space>
+            <n-space class="discussion-edit-radio-options">
               <n-radio :value="'none'">无</n-radio>
               <n-radio :value="'problem'">题目</n-radio>
               <n-radio :value="'contest'">比赛（题单）</n-radio>
@@ -146,11 +145,12 @@ const submit = async () => {
           />
         </n-space>
       </div>
-      <div>
-        <h2>讨论正文</h2>
+      <div class="field-block">
+        <h2 class="field-title">讨论正文</h2>
         <MdEditor v-model:content="discussion.content" />
       </div>
     </n-space>
+    </n-card>
   </n-spin>
 
   <n-divider />
@@ -167,7 +167,7 @@ const submit = async () => {
     仅教师可发布讨论
   </n-alert>
 
-  <n-space>
+  <n-space class="discussion-edit-actions">
     <n-button
       type="primary"
       size="large"
@@ -178,4 +178,90 @@ const submit = async () => {
       保存
     </n-button>
   </n-space>
+  </div>
 </template>
+
+
+<style scoped>
+.discussion-edit-page {
+  width: 100%;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 6px 2px 20px;
+}
+
+.discussion-edit-title {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  color: #1f2d3d;
+}
+
+.discussion-edit-subtitle {
+  margin: 8px 0 0;
+  color: #60748a;
+  font-size: 14px;
+}
+
+.discussion-edit-card {
+  border: 1px solid #e4ecf7;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fcff 0%, #ffffff 100%);
+  box-shadow: 0 10px 24px rgba(32, 80, 160, 0.07);
+}
+
+.field-block {
+  padding-bottom: 2px;
+}
+
+.field-title {
+  margin: 0 0 10px;
+  font-size: 18px;
+  color: #2d3f58;
+}
+
+.discussion-edit-actions {
+  margin-bottom: 12px;
+}
+
+.discussion-edit-actions :deep(.n-button) {
+  min-width: 140px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .discussion-edit-page {
+    padding: 0 0 14px;
+  }
+
+  .discussion-edit-title {
+    font-size: 28px;
+  }
+
+  .discussion-edit-subtitle {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .discussion-edit-card {
+    border-radius: 14px;
+  }
+
+  .field-title {
+    font-size: 17px;
+  }
+
+  .discussion-edit-actions {
+    width: 100%;
+  }
+
+  .discussion-edit-actions :deep(.n-button) {
+    width: 100%;
+  }
+
+  .discussion-edit-radio-options {
+    flex-wrap: wrap;
+  }
+}
+</style>
