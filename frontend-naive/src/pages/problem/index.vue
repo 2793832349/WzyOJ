@@ -55,6 +55,10 @@ const hydroImportModalVisible = ref(false);
 const hydroImportFileList = ref([]);
 const hydroImportLoading = ref(false);
 
+const hojImportModalVisible = ref(false);
+const hojImportFileList = ref([]);
+const hojImportLoading = ref(false);
+
 const closeHydroImportModal = () => {
   if (hydroImportLoading.value) return;
   hydroImportModalVisible.value = false;
@@ -99,6 +103,53 @@ const handleHydroImport = async () => {
     }
   } finally {
     hydroImportLoading.value = false;
+  }
+};
+
+const closeHojImportModal = () => {
+  if (hojImportLoading.value) return;
+  hojImportModalVisible.value = false;
+};
+
+const handleHojImport = async () => {
+  const fileInfo = hojImportFileList.value[0];
+  const rawFile = fileInfo?.file;
+  const uploadFile = rawFile?.file || rawFile;
+  if (!uploadFile) {
+    window.$message.warning('请先选择 HOJ 导出 zip 文件');
+    return;
+  }
+
+  hojImportLoading.value = true;
+  try {
+    const formData = new FormData();
+    formData.append('file', uploadFile);
+
+    const res = await Axios.post('/problem/import-hoj/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+
+    const successCount = Number(res?.imported_count || 0);
+    const failedCount = Number(res?.failed_count || 0);
+    if (failedCount > 0) {
+      const firstFailed = Array.isArray(res?.failed) ? res.failed[0] : null;
+      const tip = firstFailed
+        ? `，首个失败：${firstFailed.root || '-'} ${firstFailed.error || ''}`
+        : '';
+      window.$message.warning(`导入完成：成功 ${successCount}，失败 ${failedCount}${tip}`);
+    } else {
+      window.$message.success(`导入完成：成功 ${successCount} 题`);
+    }
+
+    if (successCount > 0) {
+      hojImportModalVisible.value = false;
+      hojImportFileList.value = [];
+      handleQueryChange();
+    }
+  } finally {
+    hojImportLoading.value = false;
   }
 };
 
@@ -180,6 +231,12 @@ handleQueryChange();
                 <n-icon :component="CloudUploadOutline" />
               </template>
               导入 Hydro
+            </n-button>
+            <n-button tertiary type="info" @click="hojImportModalVisible = true">
+              <template #icon>
+                <n-icon :component="CloudUploadOutline" />
+              </template>
+              导入 HOJ
             </n-button>
             <router-link :to="{ name: 'problem_create' }">
               <n-button type="primary">
@@ -336,6 +393,41 @@ handleQueryChange();
         <n-space justify="end">
           <n-button :disabled="hydroImportLoading" @click="closeHydroImportModal">取消</n-button>
           <n-button type="primary" :loading="hydroImportLoading" @click="handleHydroImport">
+            开始导入
+          </n-button>
+        </n-space>
+      </template>
+    </n-modal>
+
+    <n-modal
+      v-model:show="hojImportModalVisible"
+      preset="card"
+      title="导入 HOJ 题目"
+      :mask-closable="!hojImportLoading"
+      style="width: min(92vw, 620px)"
+      @after-leave="hojImportFileList = []"
+    >
+      <n-space vertical :size="12">
+        <n-alert type="info" :show-icon="false">
+          支持 HOJ 导出 zip（包含 problem_*.json 与测试数据目录）。系统会解析 JSON 并导入测试点。
+        </n-alert>
+
+        <n-upload
+          v-model:file-list="hojImportFileList"
+          :default-upload="false"
+          :max="1"
+          accept=".zip,application/zip"
+        >
+          <n-upload-dragger>
+            <div style="font-size: 14px; color: #3f5878">点击或拖拽 HOJ 导出 zip 到这里</div>
+          </n-upload-dragger>
+        </n-upload>
+      </n-space>
+
+      <template #footer>
+        <n-space justify="end">
+          <n-button :disabled="hojImportLoading" @click="closeHojImportModal">取消</n-button>
+          <n-button type="primary" :loading="hojImportLoading" @click="handleHojImport">
             开始导入
           </n-button>
         </n-space>

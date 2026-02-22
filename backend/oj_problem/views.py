@@ -247,7 +247,8 @@ def _normalize_statement_text(raw_text: str):
 
 
 def _map_heading_to_section(title: str):
-    compact = re.sub(r'[\s:：`~\-—_\|【】\[\]（）()]+', '', str(title or '').strip().lower())
+    # normalize heading: remove common punctuation, hashes and digits
+    compact = re.sub(r'[\s:：`~\-—_\|【】\[\]（）()#0-9]+', '', str(title or '').strip().lower())
     if not compact:
         return 'description'
 
@@ -259,7 +260,7 @@ def _map_heading_to_section(title: str):
         return 'output_format'
     if any(key in compact for key in ('提示', 'hint', '数据范围', '约束', 'constraints')):
         return 'hint'
-    if any(key in compact for key in ('样例', '示例', 'sample', 'example')):
+    if any(key in compact for key in ('样例', '示例', 'sample', 'example', '解释')):
         return 'samples'
     if any(key in compact for key in ('说明', '描述', '题意', 'problemstatement')):
         return 'description'
@@ -282,7 +283,12 @@ def _extract_markdown_sections(raw_text: str):
         if heading_match:
             flush(current, bucket)
             bucket = []
-            current = _map_heading_to_section(heading_match.group(1))
+            heading_title = heading_match.group(1)
+            # Treat headings that contain '解释' as sample/example sections
+            if re.search(r'解释', heading_title, flags=re.IGNORECASE):
+                current = 'samples'
+            else:
+                current = _map_heading_to_section(heading_title)
             continue
         bucket.append(line)
     flush(current, bucket)
@@ -604,7 +610,67 @@ def _import_hydro_problem_root(problem_root: Path):
     manifest_hint = _normalize_statement_text(str(manifest.get('hint') or manifest.get('tips') or ''))
 
     background = str(manifest_background or sections.get('background') or '').strip()
-    description = str(manifest_description or sections.get('description') or statement_markdown or '').strip()
+
+    # Build a cleaned description: prefer manifest description; otherwise combine sections
+    # excluding samples to avoid using sample explanations as the main description.
+    def _build_clean_description(manifest_desc: str, sections_map: dict, raw_statement: str):
+        if manifest_desc and manifest_desc.strip():
+            return manifest_desc.strip()
+
+        # If the raw statement contains an explicit samples heading, prefer text before it
+        try:
+            if raw_statement and re.search(r'(?m)^#{1,6}\s*(样例|示例|sample|example)\b', raw_statement):
+                # split at the first occurrence of samples heading
+                parts = re.split(r'(?m)^#{1,6}\s*(?:样例|示例|sample|example)\b', raw_statement, maxsplit=1)
+                if parts and parts[0].strip():
+                    pre = parts[0].strip()
+                    # strip sample-like fragments
+                    pre = re.sub(r'```[\s\S]*?```', '', pre)
+                    pre = re.sub(r'<\s*input[^>]*>.*?<\s*/\s*input\s*>', '', pre, flags=re.IGNORECASE | re.DOTALL)
+                    pre = re.sub(r'<\s*output[^>]*>.*?<\s*/\s*output\s*>', '', pre, flags=re.IGNORECASE | re.DOTALL)
+                    return pre.strip()
+        except Exception:
+            pass
+
+        # If sections has a 'description' and it doesn't look like a sample block, use it
+        sec_desc = (sections_map.get('description') or '').strip()
+        sec_samples = (sections_map.get('samples') or '').strip()
+        if sec_desc and sec_desc != sec_samples and '样例' not in sec_desc and '<input>' not in sec_desc.lower():
+            return sec_desc
+
+        # Helper: strip obvious sample blocks (fenced code, <input>/<output> tags, sample headings)
+        def _strip_sample_text(txt: str):
+            if not txt:
+                return ''
+            s = str(txt)
+            # remove fenced code blocks
+            s = re.sub(r'```[\s\S]*?```', '', s)
+            # remove XML-like sample tags
+            s = re.sub(r'<\s*input[^>]*>.*?<\s*/\s*input\s*>', '', s, flags=re.IGNORECASE | re.DOTALL)
+            s = re.sub(r'<\s*output[^>]*>.*?<\s*/\s*output\s*>', '', s, flags=re.IGNORECASE | re.DOTALL)
+            # remove lines that start with sample/input/output markers
+            s = '\n'.join([ln for ln in s.splitlines() if not re.match(r'^\s*(样例|示例|sample|input|output)[:\s]*', ln.strip().lower())])
+            return s.strip()
+
+        # Otherwise, combine non-sample sections (background, description, hint)
+        # Note: do NOT include input_format/output_format here so those remain separate fields
+        parts = []
+        for key in ('background', 'description', 'hint'):
+            val = (sections_map.get(key) or '').strip()
+            if val and val != sec_samples:
+                parts.append(_strip_sample_text(val) or val)
+        combined = '\n\n'.join(parts).strip()
+        if combined:
+            return combined
+
+        # Fallback to the full statement markdown (but strip obvious sample sections)
+        full = str(raw_statement or '').strip()
+        if sec_samples and sec_samples in full:
+            full = full.replace(sec_samples, '')
+        full = _strip_sample_text(full) or full
+        return full
+
+    description = _build_clean_description(manifest_description, sections, statement_markdown)
     input_format = str(manifest_input or sections.get('input_format') or '').strip()
     output_format = str(manifest_output or sections.get('output_format') or '').strip()
     hint = str(manifest_hint or sections.get('hint') or '').strip()
@@ -784,6 +850,139 @@ class ProblemViewSet(ModelViewSet):
                         except Exception:
                             root_name = root.name
                         failed.append({'root': root_name, 'error': str(exc)})
+        except Exception as exc:
+            return Response({'detail': f'导入失败：{exc}'}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = {
+            'imported_count': len(imported),
+            'failed_count': len(failed),
+            'imported': imported,
+            'failed': failed,
+        }
+
+        if imported and not failed:
+            return Response(payload, status=status.HTTP_201_CREATED)
+        if imported and failed:
+            return Response(payload, status=status.HTTP_200_OK)
+        return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], url_path='import-hoj')
+    def import_hoj(self, request):
+        """
+        导入 HOJ 导出的题目 ZIP（每个题目包含 problem_XXX.json 与同名目录的测试数据）。
+        """
+        archive = request.FILES.get('file') or request.FILES.get('archive')
+        if not archive:
+            return Response({'detail': '请上传 HOJ 导出 zip 文件。'}, status=status.HTTP_400_BAD_REQUEST)
+
+        file_name = str(getattr(archive, 'name', '') or '').lower()
+        if file_name and not file_name.endswith('.zip'):
+            return Response({'detail': '仅支持 .zip 文件。'}, status=status.HTTP_400_BAD_REQUEST)
+
+        imported = []
+        failed = []
+
+        try:
+            with tempfile.TemporaryDirectory(prefix='hoj_import_') as tmp_dir:
+                tmp_root = Path(tmp_dir)
+                with ZipFile(archive, 'r') as zip_file:
+                    _extract_zip_safely(zip_file, tmp_root)
+
+                # 找到顶层的 problem_*.json 文件
+                json_files = [p for p in tmp_root.iterdir() if p.is_file() and p.name.lower().startswith('problem_') and p.suffix.lower() == '.json']
+                if not json_files:
+                    return Response({'detail': '压缩包中未识别到 HOJ 导出结构（problem_*.json）。'}, status=status.HTTP_400_BAD_REQUEST)
+
+                for jf in json_files:
+                    try:
+                        data = json.loads(jf.read_text(encoding='utf-8'))
+                        # HOJ 导出通常把题目描述放在 data['problem'] 下
+                        raw = data.get('problem') if isinstance(data, dict) and data.get('problem') else data
+
+                        # 对应的数据目录名（通常与 json 文件同名前缀）
+                        stem = jf.stem
+                        candidate_dir = tmp_root / stem
+                        if not candidate_dir.exists():
+                            # 也尝试根据 problemId 查找目录
+                            pid = ''
+                            try:
+                                pid = str(raw.get('problemId') or '')
+                            except Exception:
+                                pid = ''
+                            if pid:
+                                # 取数字部分
+                                pid_key = re.sub(r'[^0-9]', '', pid)
+                                alt = None
+                                for item in tmp_root.iterdir():
+                                    if item.is_dir() and pid_key and pid_key in item.name:
+                                        alt = item
+                                        break
+                                if alt:
+                                    candidate_dir = alt
+
+                        # 构造一个兼容 Hydro 的 manifest，写入到题目目录下以复用导入逻辑
+                        manifest = {}
+                        manifest['title'] = str(raw.get('title') or raw.get('name') or jf.stem)
+                        manifest['description'] = str(raw.get('description') or raw.get('desc') or '')
+                        manifest['input'] = str(raw.get('input') or '')
+                        manifest['output'] = str(raw.get('output') or '')
+                        manifest['hint'] = str(raw.get('hint') or '')
+                        # time limit in ms
+                        tl = raw.get('timeLimit') or raw.get('time_limit_ms') or raw.get('timeLimitMs') or raw.get('time')
+                        try:
+                            manifest['time_limit_ms'] = int(tl) if tl is not None else None
+                        except Exception:
+                            manifest['time_limit_ms'] = None
+                        ml = raw.get('memoryLimit') or raw.get('memory_limit') or raw.get('memory')
+                        try:
+                            manifest['memory_limit_mb'] = int(ml) if ml is not None else None
+                        except Exception:
+                            manifest['memory_limit_mb'] = None
+
+                        # samples: 如果 samples 字段中包含文件名，则尝试读取对应文件内容
+                        samples = []
+                        raw_samples = data.get('samples') or []
+                        if isinstance(raw_samples, list) and candidate_dir.exists():
+                            for s in raw_samples:
+                                if isinstance(s, dict):
+                                    in_name = s.get('input') or s.get('in')
+                                    out_name = s.get('output') or s.get('out')
+                                    content_in = ''
+                                    content_out = ''
+                                    try:
+                                        if in_name and (candidate_dir / in_name).is_file():
+                                            content_in = (candidate_dir / in_name).read_text(encoding='utf-8')
+                                    except Exception:
+                                        content_in = ''
+                                    try:
+                                        if out_name and (candidate_dir / out_name).is_file():
+                                            content_out = (candidate_dir / out_name).read_text(encoding='utf-8')
+                                    except Exception:
+                                        content_out = ''
+                                    if content_in or content_out:
+                                        samples.append({'input': content_in, 'output': content_out})
+                                if len(samples) >= 3:
+                                    break
+                        if samples:
+                            manifest['samples'] = samples
+
+                        # 如果存在对应目录，把 manifest 写入目录作为 problem.json，方便复用 Hydro 导入
+                        if candidate_dir.exists():
+                            mf = candidate_dir / 'problem.json'
+                            mf.write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
+                            imported.append(_import_hydro_problem_root(candidate_dir))
+                        else:
+                            # 如果没有目录，创建一个临时目录并写入 json，再调用导入
+                            tmp_pr = tmp_root / f'{jf.stem}_hoj'
+                            tmp_pr.mkdir(parents=True, exist_ok=True)
+                            (tmp_pr / 'problem.json').write_text(json.dumps(manifest, ensure_ascii=False), encoding='utf-8')
+                            imported.append(_import_hydro_problem_root(tmp_pr))
+                    except Exception as exc:
+                        try:
+                            name = jf.name
+                        except Exception:
+                            name = str(jf)
+                        failed.append({'root': name, 'error': str(exc)})
         except Exception as exc:
             return Response({'detail': f'导入失败：{exc}'}, status=status.HTTP_400_BAD_REQUEST)
 

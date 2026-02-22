@@ -21,6 +21,7 @@ RUN yarn install --registry=$YARN_REGISTRY --network-timeout 600000
 COPY . .
 
 # Build
+ENV NODE_OPTIONS="--max-old-space-size=4096"
 RUN yarn build
 
 CMD ["sh", "-c", "cp -r /root/frontend/dist/* /output/"]

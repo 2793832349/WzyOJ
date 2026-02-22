@@ -62,6 +62,17 @@ class CourseViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
+        # 限制：付费课程未兑换前不能查看任何内容
+        if not instance.is_free:
+            user = request.user
+            if not user.is_authenticated:
+                return Response({'detail': '请先登录后兑换课程'}, status=status.HTTP_403_FORBIDDEN)
+            # 管理员、老师、课程创建者可访问
+            if not (user.is_staff or 'class' in getattr(user, 'permissions', []) or instance.teacher_id == user.id):
+                # 检查是否已购买
+                has_purchased = UserCoursePurchase.objects.filter(user=user, course=instance).exists()
+                if not has_purchased:
+                    return Response({'detail': '您尚未兑换此课程，请先兑换后再查看内容'}, status=status.HTTP_403_FORBIDDEN)
         context = self.get_serializer_context()
         if request.user.is_authenticated:
             course_problem_ids = ChapterProblem.objects.filter(
@@ -207,13 +218,17 @@ class CourseChapterViewSet(viewsets.ModelViewSet):
         """获取章节详情，需要检查付费权限"""
         instance = self.get_object()
         course = instance.course
-        
-        if not self.check_course_access(course):
-            return Response(
-                {'detail': '您尚未购买此课程，请先兑换后再观看'},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
+        # 限制：付费课程未兑换前不能查看任何内容
+        if not course.is_free:
+            user = request.user
+            if not user.is_authenticated:
+                return Response({'detail': '请先登录后兑换课程'}, status=status.HTTP_403_FORBIDDEN)
+            # 管理员、老师、课程创建者可访问
+            if not (user.is_staff or 'class' in getattr(user, 'permissions', []) or course.teacher_id == user.id):
+                # 检查是否已购买
+                has_purchased = UserCoursePurchase.objects.filter(user=user, course=course).exists()
+                if not has_purchased:
+                    return Response({'detail': '您尚未兑换此课程，请先兑换后再观看'}, status=status.HTTP_403_FORBIDDEN)
         serializer = self.get_serializer(instance)
         return Response(serializer.data)
 

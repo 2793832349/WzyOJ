@@ -9,7 +9,8 @@ COPY ../frontend-naive /root/frontend
 RUN cd frontend && yarn install --registry=https://registry.npmmirror.com
 
 # Build the frontend
-RUN cd frontend && yarn build
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+RUN cd frontend && yarn node --max-old-space-size=2048 $(which yarn) build
 
 # Copy build output to mounted volume
 CMD ["sh", "-c", "rm -rf /root/frontend-dist/* && cp -r /root/frontend/dist/* /root/frontend-dist/ && echo 'BUILD SUCCESS'"]
