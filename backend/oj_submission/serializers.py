@@ -1,3 +1,4 @@
+import logging
 from django.core.cache import cache
 from django.db.models import Q
 from django.utils import timezone
@@ -12,6 +13,8 @@ from rest_framework import serializers
 from .models import StatusChoices, Submission
 from .tasks import judge
 from .judge_source import build_judge_source
+
+logger = logging.getLogger(__name__)
 
 
 def _oi_feedback_hidden(submission: Submission, now) -> bool:
@@ -81,7 +84,15 @@ class SubmissionDetailSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user = self.context['request'].user
         problem_id = validated_data.pop('problem_id')
-        problem = Problem.objects.get(id=problem_id)
+        problem = Problem.objects.filter(id=problem_id).first()
+        if not problem:
+            raise serializers.ValidationError(_('Problem does not exist'))
+        
+        # Validate test_case exists
+        if not hasattr(problem, 'test_case') or problem.test_case is None:
+            raise serializers.ValidationError(
+                _('Problem does not have test cases configured'))
+        
         if not any([
                 'problem' in user.permissions
                 and bool(len(problem.test_case.test_case_config)),
@@ -91,19 +102,29 @@ class SubmissionDetailSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 _('Problem submit is not allowed'))
         validated_data['problem'] = problem
+        # Ensure the submission is associated with the requesting user
+        validated_data['user'] = user
         submission = Submission.objects.create(**validated_data)
         judge_source = build_judge_source(submission.problem, submission.language, submission.source)
-        judge.delay(
-            submission.id, submission.problem.test_case.test_case_id,
-            submission.problem.test_case.spj_id
-            if submission.problem.test_case.use_spj else None,
-            submission.problem.test_case.test_case_config,
-            submission.problem.test_case.subcheck_config
-            if submission.problem.test_case.use_subcheck else None,
-            submission.language, judge_source, {
-                'max_cpu_time': submission.problem.time_limit,
-                'max_memory': submission.problem.memory_limit * 1024 * 1024,
-            })
+        try:
+            judge.delay(
+                submission.id, submission.problem.test_case.test_case_id,
+                submission.problem.test_case.spj_id
+                if submission.problem.test_case.use_spj else None,
+                submission.problem.test_case.test_case_config,
+                submission.problem.test_case.subcheck_config
+                if submission.problem.test_case.use_subcheck else None,
+                submission.language, judge_source, {
+                    'max_cpu_time': submission.problem.time_limit,
+                    'max_memory': submission.problem.memory_limit * 1024 * 1024,
+                })
+        except Exception as e:
+            # If task dispatch fails, mark submission as system error
+            logger.error(f'Failed to dispatch judge task for submission {submission.id}: {e}')
+            submission.status = StatusChoices.SYSTEM_ERROR
+            submission.log = f'Failed to dispatch judge task: {str(e)}'
+            submission.save(update_fields=['status', 'log'])
+        
         problem.submission_count += 1
         problem.save(update_fields=['submission_count'])
         return submission

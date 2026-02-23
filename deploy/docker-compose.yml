@@ -99,7 +99,7 @@ services:
       context: ..
       dockerfile: ./deploy/dockerfile/Dockerfile.backend
       args:
-        USE_MIRROR: ${USE_MIRROR:-false}
+        USE_MIRROR: ${USE_MIRROR:-true}
     container_name: oj-backend
     restart: always
     depends_on:

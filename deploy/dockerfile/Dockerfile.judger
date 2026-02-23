@@ -9,12 +9,16 @@ RUN if [ "$USE_MIRROR" = "true" ]; then \
     fi
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN buildDeps='software-properties-common git libtool cmake python3-dev python3-pip libseccomp-dev curl' && \
-    apt-get update && apt-get install -y python3 python3-pkg-resources $buildDeps && \
+RUN export http_proxy=http://172.17.0.1:7890 && \
+    export https_proxy=http://172.17.0.1:7890 && \
+    export buildDeps='software-properties-common git libtool cmake python3-dev python3-pip libseccomp-dev curl' && \
+    apt-get update && \
+    apt-get install -y python3 python3-pkg-resources $buildDeps && \
     add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
-    apt-get update && apt-get install -y gcc-13 g++-13 && \
-    update-alternatives --install  /usr/bin/gcc gcc /usr/bin/gcc-13 80 && \
-    update-alternatives --install  /usr/bin/g++ g++ /usr/bin/g++-13 80 && \
+    apt-get update && \
+    apt-get install -y gcc-13 g++-13 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 80 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 80 && \
     echo "STAGE 0 [\033[32mPASS\033[0m]" && \
     cd /tmp
 RUN if [ "$USE_MIRROR" = "true" ]; then \

@@ -1,6 +1,8 @@
 import json
 import time
 import datetime
+import csv
+import io
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -410,6 +412,103 @@ class UserViewSet(ModelViewSet):
             'total': len(ranking),
             'ranking': ranking,
         })
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAdminUser], url_path='bulk-import')
+    def bulk_import(self, request):
+        """
+        Bulk import users from CSV file
+        Format: role,username,password
+        Supported roles: admin, teacher, student, guest
+        """
+        if 'file' not in request.FILES:
+            return Response({'error': 'No file provided'}, status=HTTP_400_BAD_REQUEST)
+        
+        try:
+            file = request.FILES['file']
+            stream = io.TextIOWrapper(file.file, encoding='utf-8')
+            reader = csv.reader(stream)
+            
+            results = {
+                'created': 0,
+                'failed': 0,
+                'details': []
+            }
+            
+            role_permissions = {
+                'admin': ['user', 'problem', 'submission', 'contest', 'discussion', 'announcement', 'class'],
+                'teacher': ['problem', 'submission', 'contest', 'class', 'discussion'],
+                'student': [],
+                'guest': []
+            }
+            
+            for row_num, row in enumerate(reader, start=1):
+                try:
+                    if len(row) != 3:
+                        results['details'].append({
+                            'row': row_num,
+                            'status': 'failed',
+                            'reason': 'Invalid format (expected: role,username,password)'
+                        })
+                        results['failed'] += 1
+                        continue
+                    
+                    role, username, password = [s.strip() for s in row]
+                    
+                    # Validate role
+                    if role not in role_permissions:
+                        results['details'].append({
+                            'row': row_num,
+                            'username': username,
+                            'status': 'failed',
+                            'reason': f'Invalid role. Supported: {", ".join(role_permissions.keys())}'
+                        })
+                        results['failed'] += 1
+                        continue
+                    
+                    # Check if username already exists
+                    if User.objects.filter(username=username).exists():
+                        results['details'].append({
+                            'row': row_num,
+                            'username': username,
+                            'status': 'failed',
+                            'reason': 'Username already exists'
+                        })
+                        results['failed'] += 1
+                        continue
+                    
+                    # Create user
+                    user = User.objects.create_user(username=username, password=password)
+                    
+                    # Set permissions based on role
+                    if role == 'admin':
+                        user.is_staff = True
+                        user.is_superuser = True
+                    
+                    user.permissions = role_permissions[role]
+                    user.save()
+                    
+                    results['details'].append({
+                        'row': row_num,
+                        'username': username,
+                        'role': role,
+                        'status': 'success'
+                    })
+                    results['created'] += 1
+                
+                except Exception as e:
+                    results['details'].append({
+                        'row': row_num,
+                        'status': 'failed',
+                        'reason': str(e)
+                    })
+                    results['failed'] += 1
+            
+            return Response(results)
+        
+        except UnicodeDecodeError:
+            return Response({'error': 'File must be UTF-8 encoded'}, status=HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            return Response({'error': f'Import failed: {str(e)}'}, status=HTTP_400_BAD_REQUEST)
 
 
 class LoginView(GenericAPIView):
